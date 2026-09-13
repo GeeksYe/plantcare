@@ -18,6 +18,7 @@ class AppTheme {
   static ThemeData light() {
     final base = ThemeData(
       useMaterial3: true,
+      fontFamily: 'MiSans', // iOS 观感：中文接近苹方，西文接近 SF Pro（开源替代，避免版权问题）
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.forest,
         primary: AppColors.forest,
@@ -41,6 +42,7 @@ class AppTheme {
           color: AppColors.ink,
           fontSize: 17,
           fontWeight: FontWeight.w600,
+          fontFamily: 'MiSans',
         ),
       ),
       dividerTheme: const DividerThemeData(color: AppColors.border, thickness: 1),
