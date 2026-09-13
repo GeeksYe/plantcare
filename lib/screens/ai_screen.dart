@@ -1,10 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../data/mock_data.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-/// 一级页：AI 识别（拍照扫描 + 绿植看病诊断，展示态）
+/// 一级页：AI 识别（调用系统相机拍照 + 绿植看病诊断；识别结果为本地 mock，接服务器时替换）
 class AiScreen extends StatefulWidget {
   const AiScreen({super.key});
 
@@ -16,6 +18,8 @@ class _AiScreenState extends State<AiScreen> {
   bool _scanning = false;
   bool _showResult = false;
   int _mode = 0; // 0 识别植物 1 看病诊断
+  String? _photoPath; // 拍摄/选择的照片路径
+  final ImagePicker _picker = ImagePicker();
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +37,8 @@ class _AiScreenState extends State<AiScreen> {
           _modeSwitch(),
           const SizedBox(height: 16),
           _scanner(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
+          _galleryEntry(),
           if (_showResult) ..._resultCards(),
           const SizedBox(height: 6),
           SectionTitle('最近识别'),
@@ -61,7 +66,7 @@ class _AiScreenState extends State<AiScreen> {
     final selected = _mode == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() { _mode = index; _showResult = false; }),
+        onTap: () => setState(() { _mode = index; _showResult = false; _photoPath = null; }),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
@@ -101,17 +106,30 @@ class _AiScreenState extends State<AiScreen> {
                       Text('AI 正在识别中…',
                           style: TextStyle(fontSize: 13, color: AppColors.forest, fontWeight: FontWeight.w600)),
                     ])
-                  : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.asset(
-                            _mode == 0 ? 'assets/images/monstera.png' : 'assets/images/ficus.png',
-                            width: 140, height: 105, fit: BoxFit.cover),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(_mode == 0 ? '对准植物，点击开始识别' : '拍下有问题的叶片',
-                          style: const TextStyle(fontSize: 13.5, color: AppColors.sub)),
-                    ]),
+                  : _photoPath != null
+                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.file(File(_photoPath!),
+                                width: 200, height: 200, fit: BoxFit.cover),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(_showResult ? '点击重新拍摄' : '已获取照片，分析中…',
+                              style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
+                        ])
+                      : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          const Icon(Icons.photo_camera_outlined, size: 46, color: AppColors.forest),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                                _mode == 0 ? 'assets/images/monstera.png' : 'assets/images/ficus.png',
+                                width: 120, height: 90, fit: BoxFit.cover),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(_mode == 0 ? '对准植物，点击调起相机拍照' : '拍下有问题的叶片',
+                              style: const TextStyle(fontSize: 13.5, color: AppColors.sub)),
+                        ]),
             ),
             // 取景框四角
             ..._corners(),
@@ -139,11 +157,55 @@ class _AiScreenState extends State<AiScreen> {
     );
   }
 
+  /// 点击取景框：调起系统相机拍照（用户取消则不触发分析）
   Future<void> _scan() async {
     if (_scanning) return;
-    setState(() => _scanning = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
+    final XFile? photo = await _pick(ImageSource.camera);
+    if (photo == null) return;
+    await _analyze(photo);
+  }
+
+  /// 从相册选择照片识别
+  Future<void> _pickFromGallery() async {
+    if (_scanning) return;
+    final XFile? photo = await _pick(ImageSource.gallery);
+    if (photo == null) return;
+    await _analyze(photo);
+  }
+
+  Future<XFile?> _pick(ImageSource source) async {
+    try {
+      return await _picker.pickImage(
+          source: source, maxWidth: 1200, imageQuality: 85);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _analyze(XFile photo) async {
+    setState(() { _photoPath = photo.path; _scanning = true; _showResult = false; });
+    await Future.delayed(const Duration(milliseconds: 1600));
     setState(() { _scanning = false; _showResult = true; });
+  }
+
+  Widget _galleryEntry() {
+    return GestureDetector(
+      onTap: _pickFromGallery,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.photo_library_outlined, size: 16, color: AppColors.forest),
+          SizedBox(width: 6),
+          Text('从相册选择照片识别',
+              style: TextStyle(fontSize: 12.5, color: AppColors.forest, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
   }
 
   List<Widget> _resultCards() {
@@ -153,7 +215,7 @@ class _AiScreenState extends State<AiScreen> {
           child: Row(children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset('assets/images/monstera.png', width: 76, height: 56, fit: BoxFit.cover),
+              child: _resultThumb(76, 56),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -187,7 +249,7 @@ class _AiScreenState extends State<AiScreen> {
           Row(children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset('assets/images/ficus.png', width: 76, height: 56, fit: BoxFit.cover),
+              child: _resultThumb(76, 56),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -210,6 +272,16 @@ class _AiScreenState extends State<AiScreen> {
       ),
       const SizedBox(height: 6),
     ];
+  }
+
+  /// 结果卡缩略图：优先展示实拍照片，无照片时回退到示例图
+  Widget _resultThumb(double w, double h) {
+    if (_photoPath != null) {
+      return Image.file(File(_photoPath!), width: w, height: h, fit: BoxFit.cover);
+    }
+    return Image.asset(
+        _mode == 0 ? 'assets/images/monstera.png' : 'assets/images/ficus.png',
+        width: w, height: h, fit: BoxFit.cover);
   }
 
   Widget _historyItem(entry) {
