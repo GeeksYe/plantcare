@@ -101,7 +101,3 @@ class GrowthCalendarScreen extends StatelessWidget {
     );
   }
 }
-
-class AlwaysAnimatedOpacity extends AlwaysAnimated {
-  const AlwaysAnimatedOpacity(double value) : super(value: value);
-}

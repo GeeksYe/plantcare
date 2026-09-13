@@ -135,12 +135,7 @@ class _AiScreenState extends State<AiScreen> {
   Widget _corner(double size, double w, Color color, {required bool top, required bool left}) {
     return SizedBox(
       width: size, height: size,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          topLeft: Radius.circular(top && left ? 12 : Radius.zero) as dynamic,
-        ),
-        child: CustomPaint(painter: _CornerPainter(color: color, w: w, top: top, left: left, radius: 12)),
-      ),
+      child: CustomPaint(painter: _CornerPainter(color: color, w: w, top: top, left: left, radius: 12)),
     );
   }
 

@@ -99,7 +99,7 @@ class _PlantDetailScreenState extends State<PlantDetailScreen> {
   Widget _nutritionCard(Plant p) {
     return SoftCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
+        Row(children: [
           Icon(Icons.spa, size: 18, color: AppColors.emerald),
           SizedBox(width: 6),
           Text('营养状态', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
