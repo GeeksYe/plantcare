@@ -5,6 +5,7 @@ import '../services/local_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'plant_detail_screen.dart';
+import 'profile_edit_screen.dart';
 
 /// 一级页：养护首页（对齐设计稿：问候+统计条+今日养护+我的花园 2×2 网格）
 class HomeScreen extends StatefulWidget {
@@ -51,19 +52,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return Row(children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('下午好，小满',
-              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          Text('下午好，${store.userName}',
+              style: const TextStyle(
+                  fontSize: 21, fontWeight: FontWeight.w800, color: AppColors.ink)),
           const SizedBox(height: 4),
           Text('$plantCount株绿植已接入智能花盆 · 实时守护中',
               style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
         ]),
       ),
       const SizedBox(width: 12),
-      Container(
-        width: 46, height: 46,
-        decoration: const BoxDecoration(color: Color(0xFFE5E7EB), shape: BoxShape.circle),
-        alignment: Alignment.center,
-        child: const Text('头像', style: TextStyle(fontSize: 10.5, color: Color(0xFF9CA3AF))),
+      GestureDetector(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ProfileEditScreen())),
+        child: UserAvatar(
+          imagePath: store.userAvatarPath,
+          emoji: store.userAvatarEmoji,
+          size: 46,
+        ),
       ),
     ]);
   }

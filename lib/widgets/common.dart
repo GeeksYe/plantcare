@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
@@ -188,6 +190,36 @@ class EmojiAvatar extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: Text(emoji, style: TextStyle(fontSize: size * 0.5)),
+    );
+  }
+}
+
+/// 用户头像：优先展示本机上传的照片，没有照片时回退到 emoji 预设头像
+class UserAvatar extends StatelessWidget {
+  final String? imagePath;
+  final String emoji;
+  final double size;
+  const UserAvatar(
+      {super.key, this.imagePath, this.emoji = '🌿', this.size = 56});
+
+  @override
+  Widget build(BuildContext context) {
+    final path = imagePath;
+    if (path != null && path.isNotEmpty && File(path).existsSync()) {
+      return ClipOval(
+        child: Image.file(File(path),
+            width: size, height: size, fit: BoxFit.cover),
+      );
+    }
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: AppColors.softCard,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(emoji, style: TextStyle(fontSize: size * 0.48)),
     );
   }
 }

@@ -171,4 +171,27 @@ class MockData {
     GrowthRecord('周三 16:00', '转盆 90° 均衡光照', '大提琴（琴叶榕）', '☀️'),
     GrowthRecord('周二 08:20', '识别出新植物「月影系多肉」', '胖胖（多肉）', '📸'),
   ];
+
+  /// 用户勋章（默认解锁：新手园丁 / 绿植达人 / 打卡狂人）
+  static const badges = <UserBadge>[
+    UserBadge(id: 'newbie', name: '新手园丁', emoji: '🌱',
+        condition: '添加第一株植物', colorValue: 0xFF22C55E),
+    UserBadge(id: 'water', name: '浇水达人', emoji: '💧',
+        condition: '累计完成 50 次浇水', colorValue: 0xFF38BDF8),
+    UserBadge(id: 'detective', name: '植物侦探', emoji: '📸',
+        condition: '完成 10 次 AI 识别', colorValue: 0xFF8B5CF6),
+    UserBadge(id: 'streak', name: '打卡狂人', emoji: '🔥',
+        condition: '连续打卡满 30 天', colorValue: 0xFFF97316),
+    UserBadge(id: 'expert', name: '绿植达人', emoji: '🌿',
+        condition: '养护天数满 100 天', colorValue: 0xFF15803D),
+    UserBadge(id: 'forest', name: '森林之主', emoji: '🌳',
+        condition: '同时养护 10 株植物', colorValue: 0xFF0EA5E9),
+    UserBadge(id: 'scholar', name: '百科学者', emoji: '🏆',
+        condition: '浏览 20 种植物百科', colorValue: 0xFFD97706),
+    UserBadge(id: 'legend', name: '传奇园丁', emoji: '👑',
+        condition: '养护天数满 365 天', colorValue: 0xFFEAB308),
+  ];
+
+  /// 预设头像（不想上传照片时可直接选用）
+  static const presetAvatars = <String>['🌿', '🌱', '🌵', '🌸', '🍀', '🌻', '🌴', '🍃'];
 }

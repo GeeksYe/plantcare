@@ -112,3 +112,20 @@ class GrowthRecord {
 
   const GrowthRecord(this.date, this.action, this.plantName, this.icon);
 }
+
+/// 用户勋章
+class UserBadge {
+  final String id;
+  final String name;
+  final String emoji;
+  final String condition; // 获得条件
+  final int colorValue; // 勋章主题色
+
+  const UserBadge({
+    required this.id,
+    required this.name,
+    required this.emoji,
+    required this.condition,
+    required this.colorValue,
+  });
+}
