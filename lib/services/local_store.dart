@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 本地缓存层：暂不接服务器，所有用户操作数据先落本地
@@ -103,6 +105,30 @@ class LocalStore {
 
   int get checkinDays => _prefs.getInt('checkin_days') ?? 36;
   Future<void> setCheckinDays(int v) => _prefs.setInt('checkin_days', v);
+
+  // ---------- 我发布的动态（本机保存）----------
+  List<Map<String, dynamic>> get myPosts {
+    final raw = _prefs.getStringList('my_posts') ?? const [];
+    final list = <Map<String, dynamic>>[];
+    for (final e in raw) {
+      try {
+        list.add(jsonDecode(e) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  Future<void> addMyPost(Map<String, dynamic> post) async {
+    final list = _prefs.getStringList('my_posts') ?? <String>[];
+    list.insert(0, jsonEncode(post));
+    await _prefs.setStringList('my_posts', list);
+  }
+
+  Future<void> deleteMyPost(String id) async {
+    final list = myPosts..removeWhere((p) => p['id'] == id);
+    await _prefs.setStringList(
+        'my_posts', list.map((e) => jsonEncode(e)).toList());
+  }
 
   // ---------- 勋章 ----------
   List<String> get _defaultBadges => ['newbie', 'expert', 'streak'];
