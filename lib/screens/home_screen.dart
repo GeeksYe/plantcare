@@ -165,10 +165,41 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(fontSize: 11, color: AppColors.sub)),
             const SizedBox(height: 8),
             Row(children: [
-              Expanded(child: SensorChip(icon: Icons.water_drop_outlined, label: '湿度', value: '${p.humidity}%')),
+              _statTile(Icons.water_drop_outlined, '湿度', '${p.humidity}%',
+                  valueColor: p.needsWater ? AppColors.amber : AppColors.ink),
               const SizedBox(width: 6),
-              Expanded(child: SensorChip(icon: Icons.device_thermostat, label: '温度', value: '${p.temperature}°')),
+              _statTile(Icons.device_thermostat, '温度', '${p.temperature}°'),
             ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 卡片内紧凑竖排数据小块：上行「图标+标签」，下行数值，天然适配窄宽度不溢出
+  Widget _statTile(IconData icon, String label, String value, {Color? valueColor}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.softCard,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Icon(icon, size: 11, color: AppColors.emerald),
+              const SizedBox(width: 3),
+              Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
+            ]),
+            const SizedBox(height: 1),
+            Text(value,
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w700,
+                    color: valueColor ?? AppColors.ink)),
           ],
         ),
       ),
