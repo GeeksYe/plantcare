@@ -1,0 +1,31 @@
+# CNB 云原生构建：推送到 main 分支自动打包 Release APK
+# 构建完成后，APK 会作为附件挂在本次 commit 上，在网页 commit 详情里可直接下载
+main:
+  push:
+    - name: build-apk
+      docker:
+        # Flutter 3.27 官方社区镜像（内置 Android SDK + JDK 17）
+        image: ghcr.io/cirruslabs/flutter:3.27.4
+      stages:
+        - name: 环境准备
+          script: |
+            git config --global --add safe.directory "$(pwd)"
+            flutter --version
+            flutter pub get
+        - name: 生成安装签名
+          script: |
+            mkdir -p ~/.android
+            if [ ! -f ~/.android/debug.keystore ]; then
+              keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+                -storepass android -alias androiddebugkey -keypass android \
+                -keyalg RSA -keysize 2048 -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+        - name: 打包 Release APK
+          timeout: 3h
+          script: flutter build apk --release
+        - name: 上传 APK 到 commit 附件
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - build/app/outputs/flutter-apk/app-release.apk

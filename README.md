@@ -16,22 +16,17 @@
 | 二级 | 植物详情 / 我的花园 / 养护日历 / 提醒设置 / 植物百科 / 关于我们 |
 | 三级 | 修改昵称（本地持久化）/ 成长日历（首日→6 个月里程碑） |
 
-## 在线打包（推荐，本机无需任何安卓环境）
+## 在线打包（推荐：CNB 云原生构建，国内直连 + 微信登录，本机无需任何安卓环境）
 
-1. 在 GitHub 新建一个仓库（如 `plantcare`）
-2. 把本目录推上去：
+1. 打开 https://cnb.cool ，用**微信扫码**登录（免费，构建每月赠送 160 核时）
+2. 右上角「+」新建仓库（如 `plantcare`，**公开**仓库）
+3. 头像 → 设置 → 访问令牌 → 新建令牌（勾选仓库读写），把令牌发给助手，由助手推送代码并触发构建
+4. 构建自动开始：推送后流水线自动执行 `flutter build apk --release`
+5. 构建完成后，打开仓库最新 commit 详情页 → **附件** → 下载 `app-release.apk`，传到手机安装（需允许「安装未知来源应用」）
 
-   ```bash
-   cd plantcare_app
-   git init && git add . && git commit -m "init: 绿植管家 Flutter App"
-   git branch -M main
-   git remote add origin https://github.com/<你的用户名>/plantcare.git
-   git push -u origin main
-   ```
+### 备选：GitHub Actions
 
-3. 打开仓库 **Actions** 页 → 选择 **Build APK** → **Run workflow**
-4. 构建完成后在该次运行页面的 **Artifacts** 下载 `绿植管家-apk`，解压即得 `app-release.apk`
-5. 把 APK 传到手机安装（需允许「安装未知来源应用」）
+工程内含 `.github/workflows/build_apk.yml`，如可访问 GitHub 也可推送后到 Actions 页手动 Run workflow，产物在 Artifacts。
 
 ## 本地打包（可选）
 
