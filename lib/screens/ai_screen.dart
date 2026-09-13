@@ -1,12 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../data/mock_data.dart';
-import '../models.dart';
 import '../theme.dart';
-import '../widgets/common.dart';
 
-/// 一级页：AI 识别（调用系统相机拍照 + 绿植看病诊断；识别结果为本地 mock，接服务器时替换）
+/// 一级页：AI 植物识别（对齐设计稿：深绿相机卡 + 识别结果卡 + 绿植看病卡）
+/// 相机/相册为真实调用，识别结论为本地 mock，接服务器时替换 _analyze
 class AiScreen extends StatefulWidget {
   const AiScreen({super.key});
 
@@ -17,147 +15,178 @@ class AiScreen extends StatefulWidget {
 class _AiScreenState extends State<AiScreen> {
   bool _scanning = false;
   bool _showResult = false;
-  int _mode = 0; // 0 识别植物 1 看病诊断
-  String? _photoPath; // 拍摄/选择的照片路径
+  String? _photoPath;
   final ImagePicker _picker = ImagePicker();
+  final _symptoms = <String>{};
+
+  static const _symptomOptions = ['叶片发黄', '烂根发臭', '虫害斑点', '生长缓慢'];
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
         children: [
-          const Text('AI 植物助手',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.ink)),
-          const SizedBox(height: 4),
-          const Text('拍一拍，认识你的绿色邻居',
-              style: TextStyle(fontSize: 12.5, color: AppColors.sub)),
-          const SizedBox(height: 16),
-          _modeSwitch(),
-          const SizedBox(height: 16),
-          _scanner(),
-          const SizedBox(height: 10),
-          _galleryEntry(),
-          if (_showResult) ..._resultCards(),
-          const SizedBox(height: 6),
-          SectionTitle('最近识别'),
-          ...MockData.wikiEntries.take(3).map(_historyItem),
+          _header(),
+          const SizedBox(height: 14),
+          _cameraCard(),
+          if (_showResult) ...[
+            const SizedBox(height: 14),
+            _resultCard(),
+          ],
+          const SizedBox(height: 14),
+          _diagnoseCard(),
         ],
       ),
     );
   }
 
-  Widget _modeSwitch() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.softCard,
-        borderRadius: BorderRadius.circular(14),
+  Widget _header() {
+    return Row(children: [
+      const Text('AI 植物识别',
+          style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppColors.ink)),
+      const Spacer(),
+      GestureDetector(
+        onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('拍下植物清晰照片，AI 自动识别物种并给出养护建议'),
+            backgroundColor: AppColors.forest)),
+        child: Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.border),
+          ),
+          alignment: Alignment.center,
+          child: const Text('?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.sub)),
+        ),
       ),
-      child: Row(children: [
-        _modeTab('识别植物', Icons.center_focus_weak, 0),
-        _modeTab('绿植看病', Icons.healing, 1),
+    ]);
+  }
+
+  // ---------- 相机卡 ----------
+
+  Widget _cameraCard() {
+    return Container(
+      height: 400,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF14532D), Color(0xFF15803D)],
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(children: [
+        const Text('将植物放入取景框',
+            style: TextStyle(color: Colors.white70, fontSize: 12.5, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        Expanded(child: _viewfinder()),
+        const SizedBox(height: 12),
+        Row(children: [
+          _camSideButton(Icons.photo_library_outlined, _pickFromGallery),
+          const Spacer(),
+          _shutter(),
+          const Spacer(),
+          _camSideButton(Icons.cameraswitch_outlined, () {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('已切换摄像头（演示）'), backgroundColor: AppColors.forest));
+          }),
+        ]),
       ]),
     );
   }
 
-  Widget _modeTab(String label, IconData icon, int index) {
-    final selected = _mode == index;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() { _mode = index; _showResult = false; _photoPath = null; }),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(icon, size: 17,
-                color: selected ? AppColors.forest : AppColors.sub),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                    color: selected ? AppColors.forest : AppColors.sub)),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _scanner() {
-    return GestureDetector(
-      onTap: _scan,
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.softCard,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.border, width: 1.5),
-          ),
-          child: Stack(children: [
+  Widget _viewfinder() {
+    final hasPhoto = _photoPath != null;
+    return Center(
+      child: SizedBox(
+        width: double.infinity,
+        height: 230,
+        child: Stack(children: [
+          if (hasPhoto)
             Center(
-              child: _scanning
-                  ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      CircularProgressIndicator(color: AppColors.forest),
-                      SizedBox(height: 12),
-                      Text('AI 正在识别中…',
-                          style: TextStyle(fontSize: 13, color: AppColors.forest, fontWeight: FontWeight.w600)),
-                    ])
-                  : _photoPath != null
-                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(File(_photoPath!),
-                                width: 200, height: 200, fit: BoxFit.cover),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(_showResult ? '点击重新拍摄' : '已获取照片，分析中…',
-                              style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
-                        ])
-                      : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.photo_camera_outlined, size: 46, color: AppColors.forest),
-                          const SizedBox(height: 10),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                                _mode == 0 ? 'assets/images/monstera.png' : 'assets/images/ficus.png',
-                                width: 120, height: 90, fit: BoxFit.cover),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(_mode == 0 ? '对准植物，点击调起相机拍照' : '拍下有问题的叶片',
-                              style: const TextStyle(fontSize: 13.5, color: AppColors.sub)),
-                        ]),
+              child: Opacity(
+                opacity: _scanning ? 0.5 : 1.0,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(File(_photoPath!), width: 220, height: 190, fit: BoxFit.cover),
+                ),
+              ),
+            )
+          else
+            const Center(child: Icon(Icons.eco_outlined, size: 72, color: Color(0x3DFFFFFF))),
+          ..._corners(),
+          if (_scanning)
+            const Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                CircularProgressIndicator(color: Colors.white),
+                SizedBox(height: 10),
+                Text('AI 正在识别中…',
+                    style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              ]),
             ),
-            // 取景框四角
-            ..._corners(),
-          ]),
-        ),
+        ]),
       ),
     );
   }
 
   List<Widget> _corners() {
-    const size = 26.0, w = 3.0, pad = 18.0;
-    final color = AppColors.forest;
+    const size = 30.0, w = 3.5;
+    const color = Color(0xFFF59E0B); // 设计稿的橙色取景角
     return [
-      Positioned(top: pad, left: pad, child: _corner(size, w, color, top: true, left: true)),
-      Positioned(top: pad, right: pad, child: _corner(size, w, color, top: true, left: false)),
-      Positioned(bottom: pad, left: pad, child: _corner(size, w, color, top: false, left: true)),
-      Positioned(bottom: pad, right: pad, child: _corner(size, w, color, top: false, left: false)),
+      Positioned(top: 0, left: 16, child: _corner(size, w, color, top: true, left: true)),
+      Positioned(top: 0, right: 16, child: _corner(size, w, color, top: true, left: false)),
+      Positioned(bottom: 0, left: 16, child: _corner(size, w, color, top: false, left: true)),
+      Positioned(bottom: 0, right: 16, child: _corner(size, w, color, top: false, left: false)),
     ];
   }
 
   Widget _corner(double size, double w, Color color, {required bool top, required bool left}) {
     return SizedBox(
       width: size, height: size,
-      child: CustomPaint(painter: _CornerPainter(color: color, w: w, top: top, left: left, radius: 12)),
+      child: CustomPaint(painter: _CornerPainter(color: color, w: w, top: top, left: left, radius: 10)),
     );
   }
 
-  /// 点击取景框：调起系统相机拍照（用户取消则不触发分析）
+  Widget _shutter() {
+    return GestureDetector(
+      onTap: _scan,
+      child: Container(
+        width: 64, height: 64,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white24, width: 3),
+        ),
+        padding: const EdgeInsets.all(5),
+        child: Container(
+          decoration: const BoxDecoration(color: Color(0xFF166534), shape: BoxShape.circle),
+          alignment: Alignment.center,
+          child: _scanning
+              ? const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4))
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
+  Widget _camSideButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40, height: 40,
+        decoration: const BoxDecoration(color: Color(0x29FFFFFF), shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 19, color: Colors.white),
+      ),
+    );
+  }
+
+  // ---------- 拍照与识别 ----------
+
   Future<void> _scan() async {
     if (_scanning) return;
     final XFile? photo = await _pick(ImageSource.camera);
@@ -165,7 +194,6 @@ class _AiScreenState extends State<AiScreen> {
     await _analyze(photo);
   }
 
-  /// 从相册选择照片识别
   Future<void> _pickFromGallery() async {
     if (_scanning) return;
     final XFile? photo = await _pick(ImageSource.gallery);
@@ -175,8 +203,7 @@ class _AiScreenState extends State<AiScreen> {
 
   Future<XFile?> _pick(ImageSource source) async {
     try {
-      return await _picker.pickImage(
-          source: source, maxWidth: 1200, imageQuality: 85);
+      return await _picker.pickImage(source: source, maxWidth: 1200, imageQuality: 85);
     } catch (_) {
       return null;
     }
@@ -188,120 +215,158 @@ class _AiScreenState extends State<AiScreen> {
     setState(() { _scanning = false; _showResult = true; });
   }
 
-  Widget _galleryEntry() {
-    return GestureDetector(
-      onTap: _pickFromGallery,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.photo_library_outlined, size: 16, color: AppColors.forest),
-          SizedBox(width: 6),
-          Text('从相册选择照片识别',
-              style: TextStyle(fontSize: 12.5, color: AppColors.forest, fontWeight: FontWeight.w600)),
+  // ---------- 识别结果卡 ----------
+
+  Widget _resultCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(children: [
+        Row(children: [
+          const Text('识别结果',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text('已识别 · 98%',
+                style: TextStyle(fontSize: 11, color: AppColors.emerald, fontWeight: FontWeight.w600)),
+          ),
         ]),
+        const SizedBox(height: 12),
+        const Text('龟背竹',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.ink)),
+        const SizedBox(height: 2),
+        const Text('Monstera deliciosa',
+            style: TextStyle(fontSize: 12, color: AppColors.sub, fontStyle: FontStyle.italic)),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: const LinearProgressIndicator(
+              value: 0.98, minHeight: 6,
+              backgroundColor: AppColors.softCard, color: AppColors.forest),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity, height: 42,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.forest,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(21)),
+            ),
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('龟背竹：喜散射光，土干 2cm 浇透，每月擦叶助「开背」'),
+                backgroundColor: AppColors.forest)),
+            child: const Text('查看养护详情', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ---------- 绿植看病卡 ----------
+
+  Widget _diagnoseCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('绿植看病',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.ink)),
+        const SizedBox(height: 4),
+        const Text('描述症状，AI帮你诊断病害',
+            style: TextStyle(fontSize: 11.5, color: AppColors.sub)),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: _symptomOptions.map(_symptomChip).toList(),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity, height: 42,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.forest,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(21)),
+            ),
+            onPressed: _diagnose,
+            child: const Text('开始 AI 诊断', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _symptomChip(String s) {
+    final selected = _symptoms.contains(s);
+    return GestureDetector(
+      onTap: () => setState(() => selected ? _symptoms.remove(s) : _symptoms.add(s)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.forest : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? AppColors.forest : AppColors.border),
+        ),
+        child: Text(s,
+            style: TextStyle(fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: selected ? Colors.white : AppColors.sub)),
       ),
     );
   }
 
-  List<Widget> _resultCards() {
-    if (_mode == 0) {
-      return [
-        SoftCard(
-          child: Row(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _resultThumb(76, 56),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('龟背竹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
-                SizedBox(height: 2),
-                Text('Monstera deliciosa · 天南星科',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.sub, fontStyle: FontStyle.italic)),
-                SizedBox(height: 4),
-                Text('置信度 98.2% · 喜散射光，耐阴',
-                    style: TextStyle(fontSize: 12, color: AppColors.emerald, fontWeight: FontWeight.w600)),
-              ]),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        SoftCard(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-            Text('养护要点', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-            SizedBox(height: 8),
-            Text('• 明亮散射光，避免暴晒\n• 土干 2cm 再浇透\n• 每月擦拭叶面，助「开背」\n• 冬季保持 10℃ 以上',
+  void _diagnose() {
+    if (_symptoms.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('请先选择至少一个症状'), backgroundColor: AppColors.forest));
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('诊断结果：叶斑病（早期）',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.ink)),
+            const SizedBox(height: 4),
+            const Text('危险程度：轻微 · 置信度 91.4%',
+                style: TextStyle(fontSize: 12, color: AppColors.amber, fontWeight: FontWeight.w600)),
+            const Divider(height: 22),
+            const Text('用药建议',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+            const SizedBox(height: 6),
+            const Text('1. 剪除病叶并销毁，避免传染\n2. 喷施多菌灵 800 倍液，每 7 天一次，连续 2~3 次\n3. 改善通风，浇水避开叶面',
                 style: TextStyle(fontSize: 12.5, color: AppColors.sub, height: 1.7)),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity, height: 42,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.forest,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(21)),
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('知道了', style: TextStyle(fontSize: 13.5)),
+              ),
+            ),
           ]),
         ),
-        const SizedBox(height: 6),
-      ];
-    }
-    return [
-      SoftCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _resultThumb(76, 56),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('诊断结果：叶斑病（早期）',
-                    style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: AppColors.ink)),
-                SizedBox(height: 4),
-                Text('危险程度：轻微 · 置信度 91.4%',
-                    style: TextStyle(fontSize: 12, color: AppColors.amber, fontWeight: FontWeight.w600)),
-              ]),
-            ),
-          ]),
-          const Divider(height: 20),
-          const Text('用药建议',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-          const SizedBox(height: 6),
-          const Text('1. 剪除病叶并销毁，避免传染\n2. 喷施多菌灵 800 倍液，每 7 天一次，连续 2~3 次\n3. 改善通风，浇水避开叶面',
-              style: TextStyle(fontSize: 12.5, color: AppColors.sub, height: 1.7)),
-        ]),
-      ),
-      const SizedBox(height: 6),
-    ];
-  }
-
-  /// 结果卡缩略图：优先展示实拍照片，无照片时回退到示例图
-  Widget _resultThumb(double w, double h) {
-    if (_photoPath != null) {
-      return Image.file(File(_photoPath!), width: w, height: h, fit: BoxFit.cover);
-    }
-    return Image.asset(
-        _mode == 0 ? 'assets/images/monstera.png' : 'assets/images/ficus.png',
-        width: w, height: h, fit: BoxFit.cover);
-  }
-
-  Widget _historyItem(entry) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SoftCard(
-        child: Row(children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(entry.image, width: 56, height: 42, fit: BoxFit.cover),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(entry.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
-              Text(entry.latin, style: const TextStyle(fontSize: 11, color: AppColors.sub, fontStyle: FontStyle.italic)),
-            ]),
-          ),
-          const Icon(Icons.chevron_right, color: AppColors.sub),
-        ]),
       ),
     );
   }

@@ -6,7 +6,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'plant_detail_screen.dart';
 
-/// 一级页：养护首页
+/// 一级页：养护首页（对齐设计稿：问候+统计条+今日养护+我的花园 2×2 网格）
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -19,114 +19,161 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final needCare = MockData.plants.where((p) => p.needsWater || p.needFertilizer).length;
+    final plants = MockData.plants;
+    final needWater = plants.where((p) => p.needsWater).length;
+    final needSun = plants.where((p) => p.light < 60).length;
     return SafeArea(
       bottom: false,
       child: RefreshIndicator(
         color: AppColors.forest,
         onRefresh: () async => setState(() {}),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
           children: [
-            _header(needCare),
+            _header(plants.length),
             const SizedBox(height: 14),
-            _sensorOverview(),
-            const SizedBox(height: 16),
-            SectionTitle('我的绿植', action: '全部 ›',
-                onAction: () => setState(() {})),
-            SizedBox(
-              height: 218,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: MockData.plants.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (_, i) => _plantCard(MockData.plants[i]),
-              ),
-            ),
-            const SizedBox(height: 14),
-            SectionTitle('今日任务'),
-            ...MockData.todayTasks.map(_taskCard),
+            _statsBar(needWater, needSun, plants.length),
+            const SizedBox(height: 18),
+            const SectionTitle('今日养护'),
+            const SizedBox(height: 10),
+            ...MockData.todayTasks.map(_careCard),
+            const SizedBox(height: 18),
+            const SectionTitle('我的花园'),
+            const SizedBox(height: 10),
+            _gardenGrid(plants),
           ],
         ),
       ),
     );
   }
 
-  Widget _header(int needCare) {
-    return Row(
-      children: [
-        const EmojiAvatar('🌿', size: 44),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('早上好，园丁 🌞',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.ink)),
-            const SizedBox(height: 2),
-            Text('有 $needCare 位绿色伙伴今天需要照顾',
-                style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
-          ]),
-        ),
-        Stack(
-          children: [
-            IconButton(
-              onPressed: () {},
-              icon: const Icon(Icons.notifications_outlined, color: AppColors.ink),
-            ),
-            Positioned(
-              right: 10,
-              top: 10,
-              child: Container(
-                width: 8, height: 8,
-                decoration: const BoxDecoration(color: AppColors.amber, shape: BoxShape.circle),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+  Widget _header(int plantCount) {
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('下午好，小满',
+              style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text('$plantCount株绿植已接入智能花盆 · 实时守护中',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
+        ]),
+      ),
+      const SizedBox(width: 12),
+      Container(
+        width: 46, height: 46,
+        decoration: const BoxDecoration(color: Color(0xFFE5E7EB), shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: const Text('头像', style: TextStyle(fontSize: 10.5, color: Color(0xFF9CA3AF))),
+      ),
+    ]);
   }
 
-  Widget _sensorOverview() {
+  Widget _statsBar(int needWater, int needSun, int total) {
     return Container(
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF166534), Color(0xFF15803D)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.border),
       ),
-      child: Row(
-        children: [
-          const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('智能花盆 · 已连接',
-                style: TextStyle(color: Colors.white70, fontSize: 11.5)),
-            SizedBox(height: 4),
-            Text('花园环境一切正常',
-                style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-          ]),
-          const Spacer(),
-          _envChip('💧 65%', Icons.water_drop),
+      child: Row(children: [
+        _stat('$needWater', '待浇水'),
+        _stat('$needSun', '需日照'),
+        _stat('$total', '我的植物'),
+      ]),
+    );
+  }
+
+  Widget _stat(String value, String label) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        child: Column(children: [
+          Text(value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.forest)),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.sub)),
+        ]),
+      ),
+    );
+  }
+
+  static const _actionWord = {'💧': '浇水', '🌱': '施肥', '☀️': '见光'};
+
+  Widget _careCard(CareTask t) {
+    final done = store.taskDone(t.id);
+    final plant = MockData.plants.firstWhere((p) => p.id == t.plantId);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(plant.image, width: 52, height: 52, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${plant.species} · ${_capitalLatin(plant.speciesLatin)}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              const SizedBox(height: 3),
+              Text(t.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5,
+                      color: AppColors.emerald, fontWeight: FontWeight.w600)),
+            ]),
+          ),
           const SizedBox(width: 8),
-          _envChip('☀️ 72%', Icons.wb_sunny),
-        ],
+          GestureDetector(
+            onTap: () async {
+              await store.setTaskDone(t.id, !done);
+              setState(() {});
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: done ? AppColors.softCard : AppColors.forest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(children: [
+                Text(done ? '✓' : t.icon, style: const TextStyle(fontSize: 11.5)),
+                const SizedBox(width: 4),
+                Text(done ? '已完成' : (_actionWord[t.icon] ?? '去完成'),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                        color: done ? AppColors.emerald : Colors.white)),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }
 
-  Widget _envChip(String text, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12)),
+  String _capitalLatin(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
+  }
+
+  Widget _gardenGrid(List<Plant> plants) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.82,
+      children: plants.map(_gardenCard).toList(),
     );
   }
 
-  Widget _plantCard(Plant p) {
+  Widget _gardenCard(Plant p) {
     final nickname = store.nicknameOf(p.id, p.defaultNickname);
+    final ok = !p.needsWater;
     return GestureDetector(
       onTap: () async {
         await Navigator.push(context,
@@ -134,121 +181,39 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {});
       },
       child: Container(
-        width: 156,
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(p.image, width: double.infinity, fit: BoxFit.cover),
-              ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(p.image, width: double.infinity, fit: BoxFit.cover),
             ),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: Text('$nickname（${p.species}）',
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-              ),
-              StatusDot(ok: !p.needsWater),
-            ]),
-            const SizedBox(height: 2),
-            Text('养护 ${p.careDays} 天 · ${p.warning ?? '状态健康'}',
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: AppColors.sub)),
-            const SizedBox(height: 8),
-            Row(children: [
-              _statTile(Icons.water_drop_outlined, '湿度', '${p.humidity}%',
-                  valueColor: p.needsWater ? AppColors.amber : AppColors.ink),
-              const SizedBox(width: 6),
-              _statTile(Icons.device_thermostat, '温度', '${p.temperature}°'),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 卡片内紧凑竖排数据小块：上行「图标+标签」，下行数值，天然适配窄宽度不溢出
-  Widget _statTile(IconData icon, String label, String value, {Color? valueColor}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.softCard,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(children: [
-              Icon(icon, size: 11, color: AppColors.emerald),
-              const SizedBox(width: 3),
-              Text(label, style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
-            ]),
-            const SizedBox(height: 1),
-            Text(value,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13.5, fontWeight: FontWeight.w700,
-                    color: valueColor ?? AppColors.ink)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _taskCard(CareTask t) {
-    final done = store.taskDone(t.id);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SoftCard(
-        onTap: () async {
-          await store.setTaskDone(t.id, !done);
-          setState(() {});
-        },
-        child: Row(
-          children: [
-            Container(
-              width: 42, height: 42,
-              decoration: const BoxDecoration(color: AppColors.softCard, shape: BoxShape.circle),
-              alignment: Alignment.center,
-              child: Text(t.icon, style: const TextStyle(fontSize: 18)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(t.title,
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600,
-                        color: done ? AppColors.sub : AppColors.ink,
-                        decoration: done ? TextDecoration.lineThrough : null)),
-                const SizedBox(height: 2),
-                Text(t.subtitle, style: const TextStyle(fontSize: 12, color: AppColors.sub)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('$nickname（${p.species}）',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              const SizedBox(height: 4),
+              Row(children: [
+                Container(width: 7, height: 7,
+                    decoration: BoxDecoration(
+                        color: ok ? AppColors.emerald : AppColors.amber,
+                        shape: BoxShape.circle)),
+                const SizedBox(width: 5),
+                Text(ok ? '健康' : '需浇水',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                        color: ok ? AppColors.emerald : AppColors.amber)),
               ]),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: done ? AppColors.softCard : (t.urgent ? const Color(0xFFFFF7ED) : AppColors.softCard),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(done ? '已完成 ✓' : t.time,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: done ? AppColors.emerald : (t.urgent ? AppColors.amber : AppColors.sub),
-                      fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
+            ]),
+          ),
+        ]),
       ),
     );
   }

@@ -62,6 +62,8 @@ class Post {
   final String image;
   final int likes;
   final int comments;
+  final List<String> tags; // 话题标签
+  final bool isMurmur; // 碎碎念纯文字帖
 
   const Post({
     required this.id,
@@ -72,6 +74,8 @@ class Post {
     required this.image,
     required this.likes,
     required this.comments,
+    this.tags = const [],
+    this.isMurmur = false,
   });
 }
 
