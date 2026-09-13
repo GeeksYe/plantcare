@@ -30,6 +30,7 @@ jobs:
 
       - name: 生成调试签名（保证 APK 可安装）
         run: |
+          mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
             keytool -genkeypair -v \
               -keystore ~/.android/debug.keystore \
