@@ -59,11 +59,16 @@ class Post {
   final String avatarEmoji;
   final String time;
   final String text;
-  final String image;
+  final String image; // 主图（assets 路径或本机文件路径）
   final int likes;
   final int comments;
   final List<String> tags; // 话题标签
   final bool isMurmur; // 碎碎念纯文字帖
+  final List<String> images; // 多图（本机发布的内容）
+  final String? videoPath; // 短视频（本机文件）
+  final int videoSec; // 视频时长（秒）
+  final String? avatarPath; // 发布者头像（本机照片）
+  final bool mine; // 是否是本机发布的
 
   const Post({
     required this.id,
@@ -76,6 +81,11 @@ class Post {
     required this.comments,
     this.tags = const [],
     this.isMurmur = false,
+    this.images = const [],
+    this.videoPath,
+    this.videoSec = 0,
+    this.avatarPath,
+    this.mine = false,
   });
 }
 
