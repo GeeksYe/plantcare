@@ -1,11 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+
 import '../data/mock_data.dart';
 import '../models.dart';
 import '../services/local_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'publish_screen.dart';
+import 'video_play_screen.dart';
 
-/// 一级页：发现（对齐设计稿：发布+搜索+分类chips+内容流+碎碎念；点分享弹社交面板每行3个）
+/// 一级页：发现（发布 + 搜索 + 分类chips + 内容流 + 碎碎念；点分享弹社交面板每行3个）
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
 
@@ -29,6 +34,33 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     ('复制链接', '链', Color(0xFF6B7280)),
   ];
 
+  /// 本机发布的动态 + 内置展示内容
+  List<Post> get _feed {
+    final mine = store.myPosts.map(_fromLocal).toList();
+    return <Post>[...mine, ...MockData.posts];
+  }
+
+  Post _fromLocal(Map<String, dynamic> m) {
+    final images = (m['images'] as List? ?? const []).map((e) => '$e').toList();
+    final video = (m['video'] ?? '') as String;
+    return Post(
+      id: '${m['id']}',
+      author: store.userName,
+      avatarEmoji: store.userAvatarEmoji,
+      avatarPath: store.userAvatarPath,
+      time: (m['time'] ?? '刚刚') as String,
+      text: (m['text'] ?? '') as String,
+      image: images.isNotEmpty ? images.first : '',
+      images: images,
+      videoPath: video.isEmpty ? null : video,
+      videoSec: (m['videoSec'] ?? 0) as int,
+      likes: (m['likes'] ?? 0) as int,
+      comments: (m['comments'] ?? 0) as int,
+      tags: (m['tags'] as List? ?? const []).map((e) => '$e').toList(),
+      mine: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -49,7 +81,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   List<Widget> _buildFeed() {
-    return [for (final post in MockData.posts) post.isMurmur ? _murmurCard(post) : _postCard(post)];
+    return [for (final post in _feed) post.isMurmur ? _murmurCard(post) : _postCard(post)];
   }
 
   Widget _header() {
@@ -58,9 +90,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: AppColors.ink)),
       const Spacer(),
       GestureDetector(
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('发布功能演示：写下你的养植心得吧 🌿'),
-                backgroundColor: AppColors.forest)),
+        onTap: () async {
+          final ok = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(builder: (_) => const PublishScreen()),
+          );
+          if (ok == true && mounted) setState(() {});
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
@@ -127,42 +163,81 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            EmojiAvatar(post.avatarEmoji, size: 36),
+            UserAvatar(
+                imagePath: post.avatarPath,
+                emoji: post.avatarEmoji,
+                size: 36),
             const SizedBox(width: 9),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(post.author,
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                Text('· ${post.time}', style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
+                Row(children: [
+                  Flexible(
+                    child: Text(post.author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  ),
+                  if (post.mine) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.emerald.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: const Text('我',
+                          style: TextStyle(
+                              fontSize: 9.5,
+                              color: AppColors.emerald,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ]),
+                Text('· ${post.time}',
+                    style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
               ]),
             ),
-            GestureDetector(
-              onTap: () => setState(() =>
-                  followed ? _followed.remove(post.id) : _followed.add(post.id)),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-                decoration: BoxDecoration(
-                  color: followed ? const Color(0xFFF3F7F4) : Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                      color: followed ? AppColors.border : AppColors.forest),
+            if (post.mine)
+              GestureDetector(
+                onTap: () => _confirmDelete(post),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: const Text('删除',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.sub)),
                 ),
-                child: Text(followed ? '已关注' : '关注',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
-                        color: followed ? AppColors.sub : AppColors.forest)),
+              )
+            else
+              GestureDetector(
+                onTap: () => setState(() =>
+                    followed ? _followed.remove(post.id) : _followed.add(post.id)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: followed ? const Color(0xFFF3F7F4) : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: followed ? AppColors.border : AppColors.forest),
+                  ),
+                  child: Text(followed ? '已关注' : '关注',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                          color: followed ? AppColors.sub : AppColors.forest)),
+                ),
               ),
-            ),
           ]),
+          if (post.text.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(post.text,
+                style: const TextStyle(fontSize: 13, color: AppColors.ink, height: 1.55)),
+          ],
           const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(post.image, width: double.infinity, height: 150, fit: BoxFit.cover),
-          ),
-          const SizedBox(height: 10),
-          Text(post.text,
-              style: const TextStyle(fontSize: 13, color: AppColors.ink, height: 1.55)),
+          _media(post),
           if (post.tags.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Wrap(spacing: 10, children: [
               for (final t in post.tags)
                 Text(t, style: const TextStyle(fontSize: 12, color: AppColors.emerald, fontWeight: FontWeight.w600)),
@@ -201,6 +276,131 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ]),
       ),
     );
+  }
+
+  /// 媒体区：视频 → 多图网格 → 单图 → 无
+  Widget _media(Post post) {
+    final video = post.videoPath;
+    if (video != null && video.isNotEmpty) {
+      return GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => VideoPlayScreen(path: video)),
+        ),
+        child: Container(
+          height: 190,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F2A1D),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Stack(children: [
+            const Center(
+                child: Icon(Icons.play_circle_fill, size: 52, color: Colors.white)),
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Text('短视频',
+                    style: TextStyle(fontSize: 10.5, color: Colors.white,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                    '${post.videoSec ~/ 60}:${(post.videoSec % 60).toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 10.5, color: Colors.white)),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    final images = post.images.isNotEmpty
+        ? post.images
+        : (post.image.isNotEmpty ? <String>[post.image] : const <String>[]);
+    if (images.isEmpty) return const SizedBox();
+
+    if (images.length == 1) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: _image(images.first, height: 180, width: double.infinity),
+      );
+    }
+
+    return GridView.count(
+      crossAxisCount: images.length == 4 ? 2 : 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 6,
+      crossAxisSpacing: 6,
+      children: [
+        for (final p in images)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: _image(p),
+          ),
+      ],
+    );
+  }
+
+  Widget _image(String path, {double? height, double? width}) {
+    if (path.startsWith('assets/')) {
+      return Image.asset(path,
+          height: height, width: width, fit: BoxFit.cover);
+    }
+    final file = File(path);
+    if (!file.existsSync()) {
+      return Container(
+        height: height,
+        width: width,
+        color: AppColors.softCard,
+        alignment: Alignment.center,
+        child: const Icon(Icons.image_not_supported_outlined,
+            size: 26, color: AppColors.sub),
+      );
+    }
+    return Image.file(file, height: height, width: width, fit: BoxFit.cover);
+  }
+
+  Future<void> _confirmDelete(Post post) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('删除这条动态？',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
+        content: const Text('删除后本机内容也会一并移除，无法恢复。',
+            style: TextStyle(fontSize: 13, color: AppColors.sub)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消', style: TextStyle(color: AppColors.sub))),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('删除',
+                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await store.deleteMyPost(post.id);
+      if (mounted) setState(() {});
+    }
   }
 
   Widget _murmurCard(Post post) {
