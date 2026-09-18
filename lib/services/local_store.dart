@@ -158,6 +158,34 @@ class LocalStore {
   Future<void> toggleCommentLike(String id) =>
       _prefs.setBool('clike_$id', !commentLiked(id));
 
+  // ---------- AI 服务配置（百度智能云 API Key / Secret Key）----------
+  String get aiApiKey => _prefs.getString('ai_ak') ?? '';
+  Future<void> setAiApiKey(String v) => _prefs.setString('ai_ak', v.trim());
+
+  String get aiSecretKey => _prefs.getString('ai_sk') ?? '';
+  Future<void> setAiSecretKey(String v) => _prefs.setString('ai_sk', v.trim());
+
+  // ---------- AI 检测历史 ----------
+  List<Map<String, dynamic>> get aiHistory {
+    final raw = _prefs.getStringList('ai_history') ?? const [];
+    final list = <Map<String, dynamic>>[];
+    for (final e in raw) {
+      try {
+        list.add(jsonDecode(e) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  Future<void> addAiHistory(Map<String, dynamic> record) async {
+    final list = _prefs.getStringList('ai_history') ?? <String>[];
+    list.insert(0, jsonEncode(record));
+    if (list.length > 20) list.removeRange(20, list.length);
+    await _prefs.setStringList('ai_history', list);
+  }
+
+  Future<void> clearAiHistory() => _prefs.remove('ai_history');
+
   // ---------- 勋章 ----------
   List<String> get _defaultBadges => ['newbie', 'expert', 'streak'];
 
