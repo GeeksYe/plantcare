@@ -8,19 +8,29 @@ import '../services/local_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
-/// 二级页：动态评论（支持文本 / 表情包 / 颜文字，评论保存在本机）
-class CommentScreen extends StatefulWidget {
-  final Post post;
-  const CommentScreen({super.key, required this.post});
-
-  @override
-  State<CommentScreen> createState() => _CommentScreenState();
+/// 弹出评论面板（社交平台式：点评论直接唤起，不跳页面）
+/// 返回 true 表示评论有变化，调用方需刷新
+Future<bool?> showCommentSheet(BuildContext context, {required Post post}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => _CommentSheet(post: post),
+  );
 }
 
-class _CommentScreenState extends State<CommentScreen> {
+class _CommentSheet extends StatefulWidget {
+  final Post post;
+  const _CommentSheet({required this.post});
+
+  @override
+  State<_CommentSheet> createState() => _CommentSheetState();
+}
+
+class _CommentSheetState extends State<_CommentSheet> {
   final _store = LocalStore.instance;
   final _ctrl = TextEditingController();
-  final _scroll = ScrollController();
+  final _focus = FocusNode();
 
   /// null / 'emoji' / 'kaomoji'
   String? _panel;
@@ -55,7 +65,7 @@ class _CommentScreenState extends State<CommentScreen> {
   @override
   void dispose() {
     _ctrl.dispose();
-    _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -86,7 +96,7 @@ class _CommentScreenState extends State<CommentScreen> {
     });
     _ctrl.clear();
     setState(() => _panel = null);
-    FocusScope.of(context).unfocus();
+    _focus.unfocus();
   }
 
   Future<void> _delete(Comment c) async {
@@ -119,91 +129,66 @@ class _CommentScreenState extends State<CommentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final maxH = media.size.height - keyboard - 40;
+    final sheetH = (media.size.height * 0.82).clamp(320.0, maxH);
     final list = _comments;
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pop(context, true);
-        return false;
-      },
-      child: Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        backgroundColor: AppColors.bg,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context, true),
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-        ),
-        title: Text('评论 ${list.length}',
-            style: const TextStyle(
-                fontSize: 16.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink)),
-        centerTitle: true,
-      ),
-      body: Column(children: [
-        _postSummary(),
-        Expanded(
-          child: list.isEmpty
-              ? const Center(
-                  child: Text('还没有评论，来说两句吧～',
-                      style: TextStyle(fontSize: 13.5, color: AppColors.sub)))
-              : ListView.separated(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 4),
-                  itemBuilder: (_, i) => _commentItem(list[i]),
-                ),
-        ),
-        _inputBar(),
-          ]),
-        ),
-      );
-  }
 
-  Widget _postSummary() {
-    final thumb = post.images.isNotEmpty
-        ? post.images.first
-        : (post.image.isNotEmpty ? post.image : '');
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(children: [
-        UserAvatar(
-            imagePath: post.avatarPath, emoji: post.avatarEmoji, size: 34),
-        const SizedBox(width: 9),
-        Expanded(
-          child: Text(post.text.isEmpty ? '（图片动态）' : post.text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, color: AppColors.sub)),
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Container(
+        height: sheetH,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
         ),
-        if (thumb.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: thumb.startsWith('assets/')
-                  ? Image.asset(thumb, fit: BoxFit.cover)
-                  : (File(thumb).existsSync()
-                      ? Image.file(File(thumb), fit: BoxFit.cover)
-                      : Container(
-                          color: AppColors.softCard,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.videocam,
-                              size: 18, color: AppColors.sub),
-                        )),
-            ),
+        child: Column(children: [
+          // 顶部：拖拽条 + 标题 + 关闭
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 12, 6),
+            child: Column(children: [
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                Text('${list.length} 条评论',
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context, true),
+                  child: const Icon(Icons.close, size: 22, color: AppColors.sub),
+                ),
+              ]),
+            ]),
           ),
-        ],
-      ]),
+          const Divider(height: 1),
+          // 评论列表
+          Expanded(
+            child: list.isEmpty
+                ? const Center(
+                    child: Text('还没有评论，来说两句吧～',
+                        style: TextStyle(fontSize: 13.5, color: AppColors.sub)))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => _commentItem(list[i]),
+                  ),
+          ),
+          const Divider(height: 1),
+          _inputBar(),
+        ]),
+      ),
     );
   }
 
@@ -212,149 +197,131 @@ class _CommentScreenState extends State<CommentScreen> {
     final likeCount = c.likes + (liked ? 1 : 0);
     return GestureDetector(
       onLongPress: c.mine ? () => _delete(c) : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: c.mine ? const Color(0xFFF0FDF4) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          UserAvatar(imagePath: c.avatarPath, emoji: c.avatarEmoji, size: 34),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(c.author,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
-                ),
-                if (c.mine) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: AppColors.emerald.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text('我',
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: AppColors.emerald,
-                            fontWeight: FontWeight.w700)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        UserAvatar(imagePath: c.avatarPath, emoji: c.avatarEmoji, size: 32),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(c.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              ),
+              if (c.mine) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppColors.emerald.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                ],
-                const SizedBox(width: 6),
-                Text(c.time,
-                    style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
-              ]),
-              const SizedBox(height: 4),
-              Text(c.text,
-                  style: const TextStyle(
-                      fontSize: 13.5, color: AppColors.ink, height: 1.5)),
+                  child: const Text('我',
+                      style: TextStyle(
+                          fontSize: 9,
+                          color: AppColors.emerald,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ],
+              const SizedBox(width: 6),
+              Text(c.time,
+                  style: const TextStyle(fontSize: 10.5, color: AppColors.sub)),
+            ]),
+            const SizedBox(height: 3),
+            Text(c.text,
+                style: const TextStyle(
+                    fontSize: 13.5, color: AppColors.ink, height: 1.5)),
+          ]),
+        ),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: () async {
+            await _store.toggleCommentLike(c.id);
+            if (mounted) setState(() {});
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Column(children: [
+              Icon(liked ? Icons.favorite : Icons.favorite_border,
+                  size: 16, color: liked ? AppColors.danger : AppColors.sub),
+              const SizedBox(height: 2),
+              Text('$likeCount',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: liked ? AppColors.danger : AppColors.sub)),
             ]),
           ),
-          const SizedBox(width: 6),
-          GestureDetector(
-            onTap: () async {
-              await _store.toggleCommentLike(c.id);
-              if (mounted) setState(() {});
-            },
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Column(children: [
-                Icon(liked ? Icons.favorite : Icons.favorite_border,
-                    size: 16, color: liked ? AppColors.danger : AppColors.sub),
-                const SizedBox(height: 2),
-                Text('$likeCount',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: liked ? AppColors.danger : AppColors.sub)),
-              ]),
-            ),
-          ),
-        ]),
-      ),
+        ),
+      ]),
     );
   }
 
   Widget _inputBar() {
     final canSend = _ctrl.text.trim().isNotEmpty;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Row(children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.softCard,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: TextField(
-                    controller: _ctrl,
-                    minLines: 1,
-                    maxLines: 4,
-                    onTap: () => setState(() => _panel = null),
-                    onChanged: (_) => setState(() {}),
-                    style: const TextStyle(fontSize: 14, color: AppColors.ink),
-                    decoration: const InputDecoration(
-                      hintText: '说点什么…支持表情和颜文字',
-                      hintStyle: TextStyle(fontSize: 13, color: AppColors.sub),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.softCard,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                minLines: 1,
+                maxLines: 3,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                onTap: () => setState(() => _panel = null),
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(fontSize: 14, color: AppColors.ink),
+                decoration: const InputDecoration(
+                  hintText: '说点什么…支持表情和颜文字',
+                  hintStyle: TextStyle(fontSize: 13, color: AppColors.sub),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
-              const SizedBox(width: 6),
-              _roundBtn(Icons.emoji_emotions_outlined, AppColors.amber,
-                  _panel == 'emoji', () {
-                FocusScope.of(context).unfocus();
-                setState(() => _panel = _panel == 'emoji' ? null : 'emoji');
-              }),
-              const SizedBox(width: 4),
-              _roundBtn(Icons.mood, const Color(0xFF8B5CF6), _panel == 'kaomoji',
-                  () {
-                FocusScope.of(context).unfocus();
-                setState(() => _panel = _panel == 'kaomoji' ? null : 'kaomoji');
-              }),
-              const SizedBox(width: 6),
-              GestureDetector(
-                onTap: canSend ? _send : null,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: canSend
-                        ? AppColors.forest
-                        : AppColors.forest.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Text('发送',
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white)),
-                ),
-              ),
-            ]),
+            ),
           ),
-          if (_panel != null) _panelArea(),
+          const SizedBox(width: 6),
+          _roundBtn(Icons.emoji_emotions_outlined, AppColors.amber,
+              _panel == 'emoji', () {
+            _focus.unfocus();
+            setState(() => _panel = _panel == 'emoji' ? null : 'emoji');
+          }),
+          const SizedBox(width: 4),
+          _roundBtn(Icons.mood, const Color(0xFF8B5CF6), _panel == 'kaomoji', () {
+            _focus.unfocus();
+            setState(() => _panel = _panel == 'kaomoji' ? null : 'kaomoji');
+          }),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: canSend ? _send : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(
+                color: canSend
+                    ? AppColors.forest
+                    : AppColors.forest.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Text('发送',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+            ),
+          ),
         ]),
       ),
-    );
+      if (_panel != null) _panelArea(),
+    ]);
   }
 
   Widget _roundBtn(IconData icon, Color color, bool active, VoidCallback onTap) {
@@ -380,7 +347,7 @@ class _CommentScreenState extends State<CommentScreen> {
     final items = groups[current] ?? const <String>[];
 
     return Container(
-      height: 236,
+      height: 200,
       decoration: BoxDecoration(
         color: const Color(0xFFF7FAF8),
         border: Border(top: BorderSide(color: AppColors.border)),
@@ -398,7 +365,8 @@ class _CommentScreenState extends State<CommentScreen> {
                   child: ChoiceChip(
                     label: Text(g),
                     selected: current == g,
-                    selectedColor: isEmoji ? AppColors.forest : const Color(0xFF8B5CF6),
+                    selectedColor:
+                        isEmoji ? AppColors.forest : const Color(0xFF8B5CF6),
                     labelStyle: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
