@@ -123,6 +123,31 @@ class GrowthRecord {
   const GrowthRecord(this.date, this.action, this.plantName, this.icon);
 }
 
+/// 动态评论
+class Comment {
+  final String id;
+  final String postId;
+  final String author;
+  final String avatarEmoji;
+  final String? avatarPath;
+  final String text;
+  final String time;
+  final int likes;
+  final bool mine; // 是否本机发布
+
+  const Comment({
+    required this.id,
+    required this.postId,
+    required this.author,
+    required this.avatarEmoji,
+    this.avatarPath,
+    required this.text,
+    required this.time,
+    this.likes = 0,
+    this.mine = false,
+  });
+}
+
 /// 用户勋章
 class UserBadge {
   final String id;
