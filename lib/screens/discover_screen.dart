@@ -7,6 +7,7 @@ import '../models.dart';
 import '../services/local_store.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'comment_screen.dart';
 import 'publish_screen.dart';
 import 'video_play_screen.dart';
 
@@ -255,7 +256,19 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               },
             ),
             const SizedBox(width: 20),
-            _action(icon: Icons.mode_comment_outlined, color: AppColors.sub, label: '${post.comments}', onTap: () {}),
+            _action(
+              icon: Icons.mode_comment_outlined,
+              color: AppColors.sub,
+              label: '${post.comments + store.commentsOf(post.id).length}',
+              onTap: () async {
+                final changed = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => CommentScreen(post: post)),
+                );
+                if (changed == true && mounted) setState(() {});
+              },
+            ),
             const Spacer(),
             GestureDetector(
               onTap: () => _openShare(),
@@ -424,6 +437,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             for (final t in post.tags)
               Text(t, style: const TextStyle(fontSize: 12, color: AppColors.emerald, fontWeight: FontWeight.w600)),
           ]),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () async {
+              final changed = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(builder: (_) => CommentScreen(post: post)),
+              );
+              if (changed == true && mounted) setState(() {});
+            },
+            child: Row(children: [
+              const Icon(Icons.mode_comment_outlined, size: 15, color: AppColors.sub),
+              const SizedBox(width: 4),
+              Text('${post.comments + store.commentsOf(post.id).length} 条评论',
+                  style: const TextStyle(fontSize: 12, color: AppColors.sub, fontWeight: FontWeight.w600)),
+            ]),
+          ),
         ]),
       ),
     );
