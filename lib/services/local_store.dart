@@ -130,6 +130,34 @@ class LocalStore {
         'my_posts', list.map((e) => jsonEncode(e)).toList());
   }
 
+  // ---------- 评论（本机保存）----------
+  List<Map<String, dynamic>> commentsOf(String postId) {
+    final raw = _prefs.getStringList('comments_$postId') ?? const [];
+    final list = <Map<String, dynamic>>[];
+    for (final e in raw) {
+      try {
+        list.add(jsonDecode(e) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    return list;
+  }
+
+  Future<void> addComment(String postId, Map<String, dynamic> c) async {
+    final list = _prefs.getStringList('comments_$postId') ?? <String>[];
+    list.insert(0, jsonEncode(c));
+    await _prefs.setStringList('comments_$postId', list);
+  }
+
+  Future<void> deleteComment(String postId, String id) async {
+    final list = commentsOf(postId)..removeWhere((c) => c['id'] == id);
+    await _prefs.setStringList(
+        'comments_$postId', list.map((e) => jsonEncode(e)).toList());
+  }
+
+  bool commentLiked(String id) => _prefs.getBool('clike_$id') ?? false;
+  Future<void> toggleCommentLike(String id) =>
+      _prefs.setBool('clike_$id', !commentLiked(id));
+
   // ---------- 勋章 ----------
   List<String> get _defaultBadges => ['newbie', 'expert', 'streak'];
 
