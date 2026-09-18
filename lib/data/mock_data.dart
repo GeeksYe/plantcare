@@ -145,6 +145,46 @@ class MockData {
     ),
   ];
 
+  /// 各动态的内置评论（展示数据）
+  static const commentsByPost = <String, List<Comment>>{
+    'b1': [
+      Comment(id: 'c11', postId: 'b1', author: '阳台小森林', avatarEmoji: '🌿',
+          text: '新叶好漂亮！请问平时放在什么位置呀？', time: '1小时前', likes: 12),
+      Comment(id: 'c12', postId: 'b1', author: '绿野仙踪', avatarEmoji: '🪴',
+          text: '北向窗边散射光，基本不直晒～', time: '52分钟前', likes: 8),
+      Comment(id: 'c13', postId: 'b1', author: '多肉小馆', avatarEmoji: '🌵',
+          text: '学到了 (๑•̀ㅂ•́)و✧ 我家那盆一直不开背', time: '30分钟前', likes: 5),
+    ],
+    'b2': [
+      Comment(id: 'c21', postId: 'b2', author: 'Fiona 的绿角落', avatarEmoji: '🍃',
+          text: '换土后记得缓苗一周别施肥哦', time: '40分钟前', likes: 6),
+      Comment(id: 'c22', postId: 'b2', author: '阳台小森林', avatarEmoji: '🌿',
+          text: '同款成就感！养护真的会上瘾 (≧∇≦)ﾉ', time: '12分钟前', likes: 3),
+    ],
+    'b3': [
+      Comment(id: 'c31', postId: 'b3', author: '绿野仙踪', avatarEmoji: '🪴',
+          text: '水培绿萝超好养，我也剪了几枝', time: '昨天', likes: 9),
+      Comment(id: 'c32', postId: 'b3', author: '新手园丁阿May', avatarEmoji: '🌱',
+          text: '求教程！我剪下来总是养不活 QAQ', time: '昨天', likes: 4),
+    ],
+    'b4': [
+      Comment(id: 'c41', postId: 'b4', author: '多肉小馆', avatarEmoji: '🌵',
+          text: '竹签大法好，我家的琴叶榕再没烂过根', time: '昨天 21:10', likes: 15),
+      Comment(id: 'c42', postId: 'b4', author: '阳台小森林', avatarEmoji: '🌿',
+          text: '1米2太厉害了，我的才到膝盖 😂', time: '昨天 22:02', likes: 7),
+    ],
+  };
+
+  /// 颜文字素材（评论/发布可用）
+  static const kaomojiGroups = {
+    '开心': ['(*^▽^*)', '(≧∇≦)ﾉ', '(￣▽￣)ノ', 'ヽ(✿ﾟ▽ﾟ)ノ', '(●ˊωˋ●)', '(๑´ㅂ`๑)'],
+    '喜欢': ['(♡´▽`♡)', '(｡･ω･｡)ﾉ♡', '(⑉°з°)-♡', '(*/ω＼*)', '(´∀｀)♡', '(｡♥‿♥｡)'],
+    '震惊': ['(⊙⊙)', '(!ﾟДﾟ)', '(゜ロ゜)', 'Σ(ﾟДﾟ)', '(ﾟДﾟ≡ﾟДﾟ)', '(ﾟﾛﾟ)'],
+    '难过': ['(╥╯^╰╥)', 'QAQ', '(；′⌒`)', '(´；ω；｀)', '(｡•́︿•̀｡)', 'orz'],
+    '加油': ['(๑•̀ㅂ•́)و✧', '٩(ˊᗜˋ*)و', '(ง •̀_•́)ง', '( •̀ ω •́ )✧', 'ᕦ(ò_óˇ)ᕤ', '(￣へ￣)'],
+    '卖萌': ['(｡◕‿◕｡)', '(๑>ᴗ<๑)', '(=^･ω･^=)', '(￣ω￣;)', '(・∀・)つ', '( ˘ ³˘)♥'],
+  };
+
   static const growthMilestones = <GrowthMilestone>[
     GrowthMilestone('首日', '移栽入智能花盆，叶片 4 片', '适应期'),
     GrowthMilestone('14天', '新叶展开，根系贴合盆土', '正常'),
