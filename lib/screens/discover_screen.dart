@@ -261,11 +261,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               color: AppColors.sub,
               label: '${post.comments + store.commentsOf(post.id).length}',
               onTap: () async {
-                final changed = await Navigator.push<bool>(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => CommentScreen(post: post)),
-                );
+                final changed =
+                    await showCommentSheet(context, post: post);
                 if (changed == true && mounted) setState(() {});
               },
             ),
@@ -440,10 +437,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           const SizedBox(height: 8),
           GestureDetector(
             onTap: () async {
-              final changed = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => CommentScreen(post: post)),
-              );
+              final changed = await showCommentSheet(context, post: post);
               if (changed == true && mounted) setState(() {});
             },
             child: Row(children: [
