@@ -301,7 +301,7 @@ class PlantAiService {
     final summary = (json['summary'] as String?)?.trim() ??
         (healthy ? '植株当前健康，未发现明显病害。' : '请结合实际情况处理。');
 
-    final solutions = <String>[];
+    var solutions = <String>[];
     final s = json['solutions'];
     if (s is List) {
       for (final e in s) {
