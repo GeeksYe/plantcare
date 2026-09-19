@@ -50,19 +50,10 @@ class _Cand {
   _Cand(this.name, this.score, this.baike);
 }
 
-/// 候选（plant.id 病害用，含类别与详情）
-class _DiseaseCand {
-  final String name;
-  final double score;
-  final String category;
-  final Map<String, dynamic>? details;
-  _DiseaseCand(this.name, this.score, this.category, this.details);
-}
-
 /// 真实 AI 病虫害检测 / 植物识别服务
-/// - 病虫害检测：plant.id health_assessment（专为家庭绿植训练，识别病害/虫害/缺素/环境不适）
+/// - 病虫害检测：阿里云百炼 Qwen-VL 多模态大模型（看照片即可诊断病害/虫害/生理问题）
 /// - 植物识别：百度智能云 plant 物种模型
-/// - 两套独立密钥入口：disease→plant.id（单一 API Key）、species→百度 AK/SK
+/// - 两套独立密钥入口：disease→Qwen-VL（单一 DashScope Key）、species→百度 AK/SK
 /// - 未配置或调用失败：自动降级到本地知识库给出方案
 class PlantAiService {
   PlantAiService._();
@@ -73,18 +64,20 @@ class PlantAiService {
   static const _plantUrl =
       'https://aip.baidubce.com/rest/2.0/image-classify/v1/plant';
 
-  // plant.id（病虫害检测用）
-  static const _plantIdHost = 'https://api.plant.id/v3/health_assessment';
+  // 阿里云百炼 Qwen-VL 多模态
+  static const _qwenUrl =
+      'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+  static const _qwenModel = 'qwen-vl-max';
 
-  static const _timeout = Duration(seconds: 30);
+  static const _timeout = Duration(seconds: 40);
 
   String? _token;
   DateTime? _tokenExpire;
   String? _tokenAk; // 记录该 token 对应的 API Key，避免两套不同密钥串号
   final _store = LocalStore.instance;
 
-  /// 病虫害检测是否已配置 plant.id 密钥
-  bool get diseaseConfigured => _store.plantIdKey.isNotEmpty;
+  /// 病虫害检测是否已配置 Qwen-VL
+  bool get diseaseConfigured => _store.qwenApiKey.isNotEmpty;
 
   /// 植物识别是否已配置百度 AK/SK
   bool get speciesConfigured =>
@@ -122,7 +115,7 @@ class PlantAiService {
     return _token;
   }
 
-  /// 分析图片：disease=病虫害检测（plant.id），species=植物识别（百度）
+  /// 分析图片：disease=病虫害检测（Qwen-VL），species=植物识别（百度）
   Future<AiDiagnosis> analyze(File image,
       {AiTask task = AiTask.disease, String hint = ''}) async {
     if (task == AiTask.disease) return _analyzeDisease(image, hint);
@@ -159,62 +152,128 @@ class PlantAiService {
     }
   }
 
-  // ---------- 病虫害检测（plant.id health_assessment）----------
+  // ---------- 病虫害检测：Qwen-VL 多模态 ----------
   Future<AiDiagnosis> _analyzeDisease(File image, String hint) async {
-    final key = _store.plantIdKey;
-    if (key.isEmpty) {
-      return _localResult(hint, task: AiTask.disease);
-    }
+    final r = await _tryQwen(image, hint);
+    if (r != null) return r;
+    return _localResult(hint, task: AiTask.disease);
+  }
+
+  /// 阿里云百炼 Qwen-VL：看照片诊断病害
+  Future<AiDiagnosis?> _tryQwen(File image, String hint) async {
+    final key = _store.qwenApiKey;
+    if (key.isEmpty) return null;
     try {
       final bytes = await image.readAsBytes();
       final b64 = base64Encode(bytes);
-      final uri = Uri.parse(
-        '$_plantIdHost'
-        '?language=zh'
-        '&details=local_name,description,url,treatment,classification,common_names,cause',
-      );
+      final imgUrl = 'data:image/jpeg;base64,$b64';
+      final body = {
+        'model': _qwenModel,
+        'input': {
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'image': imgUrl},
+                {'text': _qwenDiseasePrompt(hint)},
+              ]
+            }
+          ]
+        },
+        'parameters': {
+          'result_format': 'message',
+          'temperature': 0.2,
+        }
+      };
       final resp = await http
           .post(
-            uri,
+            Uri.parse(_qwenUrl),
             headers: {
-              'Api-Key': key,
+              'Authorization': 'Bearer $key',
               'Content-Type': 'application/json',
             },
-            body: jsonEncode({
-              'images': [b64],
-              'similar_images': false,
-            }),
+            body: jsonEncode(body),
           )
           .timeout(_timeout);
       final data = jsonDecode(resp.body);
-      if (data is! Map<String, dynamic>) {
+      // DashScope 错误结构：{ "code": "...", "message": "..." }
+      if (data is Map<String, dynamic> &&
+          data['output'] == null &&
+          data['code'] != null) {
+        final msg = data['message'] ?? data['code'];
         return _localResult(hint,
-            task: AiTask.disease, note: '云端返回异常，已切换本地知识库');
+            task: AiTask.disease, note: 'Qwen-VL 调用失败：$msg，已切换本地知识库');
       }
-      if (data['error'] != null || data['status'] == 'FAILED') {
-        final err = data['error'] is Map
-            ? (data['error']['message'] ?? data['error']['code'])
-            : data['error'];
+      final text = _qwenText(data);
+      if (text == null) {
         return _localResult(hint,
-            task: AiTask.disease, note: '云端识别失败：$err，已切换本地知识库');
+            task: AiTask.disease, note: 'Qwen-VL 返回解析失败，已切换本地知识库');
       }
-      return _parsePlantIdHealth(data, hint);
+      return _parseQwen(text, hint);
     } catch (e) {
       return _localResult(hint,
-          task: AiTask.disease, note: '云端调用异常（$e），已切换本地知识库');
+          task: AiTask.disease, note: 'Qwen-VL 调用异常（$e），已切换本地知识库');
     }
   }
 
-  AiDiagnosis _parsePlantIdHealth(Map<String, dynamic> data, String hint) {
-    final result = data['result'] as Map<String, dynamic>?;
-    final isPlant = (result?['is_plant'] as Map?) ?? {};
-    final isPlantBin = isPlant['binary'] == true;
-    final isHealthy = (result?['is_healthy'] as Map?) ?? {};
-    final isHealthyBin = isHealthy['binary'] == true;
-    final isHealthyProb =
-        ((isHealthy['probability'] as num?)?.toDouble()) ?? 0.0;
+  String? _qwenText(Map<String, dynamic> data) {
+    final output = data['output'];
+    if (output is! Map) return null;
+    final choices = output['choices'];
+    if (choices is! List || choices.isEmpty) return null;
+    final msg = choices[0]['message'];
+    if (msg is! Map) return null;
+    final content = msg['content'];
+    if (content is String) return content;
+    if (content is List) {
+      for (final c in content) {
+        if (c is Map && c['text'] is String) return c['text'] as String;
+      }
+    }
+    return null;
+  }
 
-    if (!isPlantBin) {
+  /// 从模型回复中尽量抽取 JSON 对象（模型可能夹带说明文字或 markdown）
+  Map<String, dynamic>? _extractJson(String text) {
+    try {
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start >= 0 && end > start) {
+        final sub = text.substring(start, end + 1);
+        final decoded = jsonDecode(sub);
+        if (decoded is Map<String, dynamic>) return decoded;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String _qwenDiseasePrompt(String hint) {
+    final hintLine = hint.isNotEmpty ? '用户补充症状：$hint。' : '';
+    return '你是一名资深植物医生，专为家庭绿植（龟背竹、绿萝、虎皮兰、多肉、琴叶榕、发财树等）看诊。'
+        '请仔细观察这张植物照片，$hintLine'
+        '判断植株是否健康；若不健康，判断是病害（真菌/细菌/病毒）、虫害，还是生理性/环境问题（缺水、烂根、日灼、缺素黄叶等）。\n'
+        '只返回一个 JSON 对象，不要 markdown 代码块、不要任何额外说明，格式严格如下：\n'
+        '{\n'
+        '  "healthy": true 或 false,\n'
+        '  "isPlant": true 或 false,\n'
+        '  "name": "病害/虫害中文名；健康则填「绿植健康」",\n'
+        '  "category": "healthy | pest | fungal | virus | abiotic",\n'
+        '  "level": "健康 | 轻度 | 中度 | 重度",\n'
+        '  "summary": "一句话描述症状或健康状态",\n'
+        '  "solutions": ["针对该问题的具体处理方案1", "方案2", "方案3"]\n'
+        '}';
+  }
+
+  AiDiagnosis _parseQwen(String text, String hint) {
+    final json = _extractJson(text);
+    // 解析失败：退化为本地知识库，但保留"云端已分析"的语义
+    if (json == null) {
+      return _localResult(hint,
+          task: AiTask.disease, note: 'Qwen-VL 返回为非结构化文本，已用本地知识库兜底');
+    }
+
+    final isPlant = json['isPlant'] != false;
+    if (!isPlant) {
       return AiDiagnosis(
         name: '未检测到植物',
         score: 0.3,
@@ -228,145 +287,55 @@ class PlantAiService {
         source: 'cloud',
         kind: 'disease',
         speak: '未检测到植物',
-        sourceNote: 'plant.id 判断图片不含植物',
+        sourceNote: 'Qwen-VL 判断图片不含植物',
       );
     }
 
-    // disease 字段可能是数组（直接 suggestions）或对象（含 suggestions）
-    final diseaseField = result?['disease'];
-    List<Map<String, dynamic>> suggestions;
-    if (diseaseField is List) {
-      suggestions = diseaseField.cast<Map<String, dynamic>>();
-    } else if (diseaseField is Map) {
-      suggestions =
-          (diseaseField['suggestions'] as List?)?.cast<Map<String, dynamic>>() ??
-              <Map<String, dynamic>>[];
-    } else {
-      suggestions = <Map<String, dynamic>>[];
+    final healthy = json['healthy'] == true;
+    final name = (json['name'] as String?)?.trim().isNotEmpty == true
+        ? (json['name'] as String).trim()
+        : (healthy ? '绿植健康' : '未明异常');
+    final category = (json['category'] as String?) ?? '';
+    final level = (json['level'] as String?)?.trim() ??
+        (healthy ? '健康' : '轻度');
+    final summary = (json['summary'] as String?)?.trim() ??
+        (healthy ? '植株当前健康，未发现明显病害。' : '请结合实际情况处理。');
+
+    final solutions = <String>[];
+    final s = json['solutions'];
+    if (s is List) {
+      for (final e in s) {
+        if (e is String && e.trim().isNotEmpty) solutions.add(e.trim());
+      }
     }
-
-    if (isHealthyBin || suggestions.isEmpty) {
-      return AiDiagnosis(
-        name: '绿植健康',
-        score: (1.0 - isHealthyProb).clamp(0.5, 1.0).toDouble(),
-        summary: 'AI 判断植株当前健康，未发现明显病害。继续保持当前养护节奏即可。',
-        level: '健康',
-        solutions: const [
-          '保持当前光照与浇水节奏',
-          '每周检查一次叶背，早发现早处理',
-          '保持通风，避免盆内长期积水',
-        ],
-        source: 'cloud',
-        kind: 'disease',
-        speak: '绿植健康',
-        sourceNote: 'plant.id health：未检出病害',
-      );
-    }
-
-    final cands = suggestions
-        .map((e) {
-          final name = (e['name'] ?? '未知') as String;
-          final score =
-              ((e['probability'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 1.0);
-          final category = (e['category'] as String?) ?? '';
-          final details = e['details'] as Map<String, dynamic>?;
-          return _DiseaseCand(name, score, category, details);
-        })
-        .toList()
-      ..sort((a, b) => b.score.compareTo(a.score));
-
-    final top = cands.first;
-    final cnName = _plantIdName(top);
-    final level = _probToLevel(top.score);
-    final summary = _plantIdSummary(top);
-    final solutions = _plantIdTreatment(top);
+    if (solutions.isEmpty) solutions = DiseaseKb.genericSolutions;
 
     return AiDiagnosis(
-      name: cnName,
-      score: top.score,
+      name: name,
+      score: healthy ? 0.92 : 0.78,
       summary: summary,
       level: level,
       solutions: solutions,
       source: 'cloud',
       kind: 'disease',
-      speak: _diseaseSpeak(cnName, top.category, top.name),
-      sourceNote: 'plant.id 识别：${top.name}',
-      alternatives: _altsDisease(cands, top.name),
+      speak: _qwenSpeak(name, category, healthy),
+      sourceNote: 'Qwen-VL 多模态判断',
+      alternatives: const [],
     );
   }
 
-  /// plant.id 病害展示名：优先本地化中文名
-  String _plantIdName(_DiseaseCand c) {
-    final d = c.details;
-    if (d != null) {
-      final local = d['local_name'];
-      if (local is String && local.isNotEmpty) return local;
-      final common = d['common_names'];
-      if (common is List && common.isNotEmpty) {
-        final first = common.first;
-        if (first is String && first.isNotEmpty) return first;
-      }
+  /// 病虫害语音播报：极简状态词
+  static String _qwenSpeak(String name, String category, bool healthy) {
+    if (healthy) return '绿植健康';
+    if (category == 'pest' || name.contains('虫')) return '绿植生虫';
+    if (category == 'fungal' ||
+        category == 'virus' ||
+        name.contains(RegExp(r'病|霉|斑'))) {
+      return '绿植生病';
     }
-    return c.name; // 英文兜底
-  }
-
-  String _plantIdSummary(_DiseaseCand c) {
-    final d = c.details;
-    final desc = d?['description'];
-    if (desc is String && desc.isNotEmpty) return desc;
-    final catLabel = _categoryLabel(c.category);
-    return 'AI 检测到「${c.name}」（$catLabel），置信度约 ${(c.score * 100).toStringAsFixed(0)}%。结合植株实际症状处理。';
-  }
-
-  static String _categoryLabel(String cat) {
-    switch (cat) {
-      case 'Fungi':
-        return '真菌性病害';
-      case 'Animalia':
-        return '虫害';
-      case 'Viruses':
-        return '病毒性病害';
-      case 'Abiotic':
-        return '生理性/环境不适';
-      case 'Senescence':
-        return '自然老化';
-      case 'Chromista':
-        return '卵菌病害';
-      default:
-        return '植物病害';
-    }
-  }
-
-  /// plant.id treatment 字段可能是字符串 / Map / List，统一抽取为方案列表
-  List<String> _plantIdTreatment(_DiseaseCand c) {
-    final t = c.details?['treatment'];
-    final out = <String>[];
-    if (t is String && t.isNotEmpty) {
-      out.add(t);
-    } else if (t is Map) {
-      for (final v in t.values) {
-        if (v is String && v.isNotEmpty) {
-          out.add(v);
-        } else if (v is List) {
-          for (final item in v) {
-            if (item is String && item.isNotEmpty) out.add(item);
-          }
-        }
-      }
-    } else if (t is List) {
-      for (final item in t) {
-        if (item is String && item.isNotEmpty) out.add(item);
-      }
-    }
-    if (out.isEmpty) return DiseaseKb.genericSolutions;
-    return out.take(6).toList();
-  }
-
-  static String _probToLevel(double p) {
-    // plant.id 病害概率普遍偏低，按相对区间映射
-    if (p >= 0.5) return '重度';
-    if (p >= 0.25) return '中度';
-    return '轻度';
+    if (category == 'abiotic' || name.contains('黄')) return '绿植叶黄';
+    if (name.contains(RegExp(r'腐|烂|枯'))) return '绿植烂根';
+    return '绿植异常';
   }
 
   // ---------- 植物识别（百度，原逻辑保留）----------
@@ -449,21 +418,6 @@ class PlantAiService {
     return out;
   }
 
-  /// 病害候选前 3（按中文名展示）
-  List<Map<String, String>> _altsDisease(
-      List<_DiseaseCand> cands, String excludeRaw) {
-    final out = <Map<String, String>>[];
-    for (final c in cands) {
-      if (c.name == excludeRaw) continue;
-      out.add({
-        'name': _plantIdName(c),
-        'score': (c.score * 100).toStringAsFixed(0),
-      });
-      if (out.length >= 3) break;
-    }
-    return out;
-  }
-
   /// 本地知识库兜底（未配置云端时）
   AiDiagnosis _localResult(String hint,
       {String? note, AiTask task = AiTask.disease}) {
@@ -481,7 +435,7 @@ class PlantAiService {
         sourceNote: note,
       );
     }
-    // 病虫害：提示接入 plant.id
+    // 病虫害：提示接入 Qwen-VL
     final kb = DiseaseKb.match(hint);
     if (kb != null) {
       final name = kb['name'] as String;
@@ -494,7 +448,7 @@ class PlantAiService {
         solutions: (kb['solutions'] as List).map((e) => '$e').toList(),
         source: 'local',
         kind: 'disease',
-        speak: _diseaseSpeak(name, '', ''),
+        speak: _qwenSpeak(name, '', false),
         sourceNote: note,
       );
     }
@@ -502,7 +456,7 @@ class PlantAiService {
       name: '待确认的叶片异常',
       score: 0.5,
       summary:
-          '根据你选择的症状仍无法精确判定，可按下列通用方案处理，或接入 plant.id 云端 AI 获取更准判断。',
+          '根据你选择的症状仍无法精确判定，可按下列通用方案处理，或接入 Qwen-VL 云端 AI 获取更准判断。',
       level: '轻度',
       solutions: DiseaseKb.genericSolutions,
       source: 'local',
@@ -510,37 +464,6 @@ class PlantAiService {
       speak: '绿植状态待确认',
       sourceNote: note,
     );
-  }
-
-  // ---------- 语音播报文案 ----------
-  /// 病虫害：用极简状态词播报，如「绿植健康」「绿植叶黄」「绿植生虫」
-  static String _diseaseSpeak(String cnName, String category, String rawName) {
-    if (cnName == '绿植健康') return '绿植健康';
-    final raw = rawName.toLowerCase();
-    if (category == 'Animalia' ||
-        RegExp(r'mite|aphid|mealy|scale|thrip|whitefly|beetle|worm|pest|bug')
-            .hasMatch(raw)) {
-      return '绿植生虫';
-    }
-    if (category == 'Fungi' ||
-        category == 'Viruses' ||
-        category == 'Chromista' ||
-        RegExp(r'mildew|blight|rust|botrytis|fungus|mold|spot|rot')
-            .hasMatch(raw)) {
-      return '绿植生病';
-    }
-    if (category == 'Abiotic' ||
-        RegExp(r'deficien|burn|edema|overwater|drought|heat|cold|nutrient')
-            .hasMatch(raw)) {
-      return '绿植状态不佳';
-    }
-    if (category == 'Senescence') return '绿植老化';
-    // 中文名关键词兜底
-    if (cnName.contains('虫')) return '绿植生虫';
-    if (cnName.contains(RegExp(r'病|霉|斑'))) return '绿植生病';
-    if (cnName.contains('黄')) return '绿植叶黄';
-    if (cnName.contains(RegExp(r'腐|烂|枯'))) return '绿植烂根';
-    return '绿植异常';
   }
 
   /// 植物识别：播报「这是薄荷」

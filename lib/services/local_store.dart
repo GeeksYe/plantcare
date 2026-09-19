@@ -158,28 +158,18 @@ class LocalStore {
   Future<void> toggleCommentLike(String id) =>
       _prefs.setBool('clike_$id', !commentLiked(id));
 
-  // ---------- AI 服务配置（两套独立密钥：病虫害检测 / 植物识别）----------
-  // 旧版单套密钥 ai_ak / ai_sk 作为兜底：若未单独配置某套，则沿用旧值，保证已有配置继续生效。
+  // ---------- AI 服务配置（两套独立密钥：病虫害检测 Qwen-VL / 植物识别 百度）----------
+  // 旧版单套密钥 ai_ak / ai_sk 作为兜底：植物识别未单独配置时沿用旧值。
   String get aiApiKey => _prefs.getString('ai_ak') ?? '';
   Future<void> setAiApiKey(String v) => _prefs.setString('ai_ak', v.trim());
 
   String get aiSecretKey => _prefs.getString('ai_sk') ?? '';
   Future<void> setAiSecretKey(String v) => _prefs.setString('ai_sk', v.trim());
 
-  /// 病虫害检测 AI（plant.id health_assessment）—— 单一 API Key，无需 Secret
-  String get plantIdKey => _prefs.getString('plantid_key') ?? '';
-  Future<void> setPlantIdKey(String v) =>
-      _prefs.setString('plantid_key', v.trim());
-
-  /// 病虫害检测 AI（百度 plant-disease，旧；已被 plant.id 取代，仅作兼容保留）
-  String get diseaseApiKey =>
-      _prefs.getString('disease_ak') ?? aiApiKey;
-  String get diseaseSecretKey =>
-      _prefs.getString('disease_sk') ?? aiSecretKey;
-  Future<void> setDiseaseApiKey(String v) =>
-      _prefs.setString('disease_ak', v.trim());
-  Future<void> setDiseaseSecretKey(String v) =>
-      _prefs.setString('disease_sk', v.trim());
+  /// 病虫害检测 AI（阿里云百炼 Qwen-VL 多模态，单一 DashScope API Key，无需 Secret）
+  String get qwenApiKey => _prefs.getString('qwen_key') ?? '';
+  Future<void> setQwenApiKey(String v) =>
+      _prefs.setString('qwen_key', v.trim());
 
   /// 植物识别 AI（百度 plant）
   String get speciesApiKey =>

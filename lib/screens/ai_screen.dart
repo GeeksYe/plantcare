@@ -465,8 +465,9 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   void _configSheet() {
-    // 两套独立密钥：病虫害检测（plant.id）/ 植物识别（百度）
-    final dAk = TextEditingController(text: _store.plantIdKey);
+    // 病虫害检测：阿里云百炼 Qwen-VL（单一 DashScope API Key）
+    // 植物识别：百度 plant（AK/SK）
+    final qAk = TextEditingController(text: _store.qwenApiKey);
     final sAk = TextEditingController(text: _store.speciesApiKey);
     final sSk = TextEditingController(text: _store.speciesSecretKey);
     showModalBottomSheet(
@@ -489,21 +490,21 @@ class _AiScreenState extends State<AiScreen> {
                       fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
               const SizedBox(height: 8),
               const Text(
-                '病虫害检测使用 plant.id 密钥（单一 API Key，专为家庭绿植训练）；植物识别使用百度智能云密钥。两者独立配置，互不影响。',
+                '病虫害检测使用阿里云百炼 Qwen-VL 多模态大模型（看照片即可诊断，国内手机号注册阿里云即得）；植物识别使用百度智能云（手机号注册）。两者独立配置，互不干扰。',
                 style: TextStyle(fontSize: 12, color: AppColors.sub, height: 1.6)),
               const SizedBox(height: 14),
               _keySection(
-                '病虫害检测 AI（plant.id）',
-                '调用 plant.id health 模型，识别叶斑/虫害/缺素/环境不适等',
-                dAk,
+                '病虫害检测 AI（Qwen-VL 多模态）',
+                '阿里云百炼 API Key（sk- 开头，单一密钥即可，无需 Secret）',
+                qAk,
                 TextEditingController(),
                 _ai.diseaseConfigured,
                 showSecret: false,
               ),
               const SizedBox(height: 14),
               _keySection(
-                '植物识别 AI（百度）',
-                '调用 plant 物种模型，识别植物叫什么',
+                '植物识别 AI（百度 plant）',
+                '识别植物叫什么',
                 sAk,
                 sSk,
                 _ai.speciesConfigured,
@@ -519,7 +520,7 @@ class _AiScreenState extends State<AiScreen> {
                         borderRadius: BorderRadius.circular(14)),
                   ),
                   onPressed: () async {
-                    await _store.setPlantIdKey(dAk.text);
+                    await _store.setQwenApiKey(qAk.text);
                     await _store.setSpeciesApiKey(sAk.text);
                     await _store.setSpeciesSecretKey(sSk.text);
                     _ai.resetToken();
@@ -546,7 +547,7 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   /// 单个密钥配置分组（标题 + 两句说明 + AK/SK 输入 + 状态）
-  /// [showSecret] = false 时只显示 API Key（如 plant.id 单一密钥）
+  /// [showSecret] = false 时只显示 API Key（如 Qwen-VL 单一密钥）
   Widget _keySection(String title, String subtitle, TextEditingController ak,
       TextEditingController sk, bool configured,
       {bool showSecret = true}) {
