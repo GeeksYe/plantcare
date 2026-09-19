@@ -515,12 +515,35 @@ class _AiScreenState extends State<AiScreen> {
           Text(r.summary,
               style: const TextStyle(fontSize: 12.5, color: AppColors.sub, height: 1.65)),
         ],
-        const SizedBox(height: 12),
-        const Row(children: [
-          Icon(Icons.healing_outlined, size: 16, color: AppColors.emerald),
-          SizedBox(width: 5),
-          Text('解决方案',
+        if (r.alternatives.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('其他可能',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: r.alternatives
+                .map((a) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.softCard,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text('${a['name']} · ${a['score']}%',
+                          style: const TextStyle(
+                              fontSize: 11.5, color: AppColors.sub, fontWeight: FontWeight.w600)),
+                    ))
+                .toList(),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(children: [
+          Icon(r.kind == 'species' ? Icons.eco_outlined : Icons.healing_outlined,
+              size: 16, color: AppColors.emerald),
+          const SizedBox(width: 5),
+          Text(r.kind == 'species' ? '养护要点' : '解决方案',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.ink)),
         ]),
         const SizedBox(height: 6),
         for (var i = 0; i < r.solutions.length; i++)
