@@ -465,9 +465,8 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   void _configSheet() {
-    // 两套独立密钥：病虫害检测 / 植物识别
-    final dAk = TextEditingController(text: _store.diseaseApiKey);
-    final dSk = TextEditingController(text: _store.diseaseSecretKey);
+    // 两套独立密钥：病虫害检测（plant.id）/ 植物识别（百度）
+    final dAk = TextEditingController(text: _store.plantIdKey);
     final sAk = TextEditingController(text: _store.speciesApiKey);
     final sSk = TextEditingController(text: _store.speciesSecretKey);
     showModalBottomSheet(
@@ -490,19 +489,20 @@ class _AiScreenState extends State<AiScreen> {
                       fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
               const SizedBox(height: 8),
               const Text(
-                '病虫害检测与植物识别使用各自独立的百度智能云密钥。若尚未分别创建应用，可在同一「图像识别」应用下为两者填相同的 Key。',
+                '病虫害检测使用 plant.id 密钥（单一 API Key，专为家庭绿植训练）；植物识别使用百度智能云密钥。两者独立配置，互不影响。',
                 style: TextStyle(fontSize: 12, color: AppColors.sub, height: 1.6)),
               const SizedBox(height: 14),
               _keySection(
-                '病虫害检测 AI',
-                '调用 plant-disease 模型，识别叶斑、虫害、黄叶等',
+                '病虫害检测 AI（plant.id）',
+                '调用 plant.id health 模型，识别叶斑/虫害/缺素/环境不适等',
                 dAk,
-                dSk,
+                TextEditingController(),
                 _ai.diseaseConfigured,
+                showSecret: false,
               ),
               const SizedBox(height: 14),
               _keySection(
-                '植物识别 AI',
+                '植物识别 AI（百度）',
                 '调用 plant 物种模型，识别植物叫什么',
                 sAk,
                 sSk,
@@ -519,8 +519,7 @@ class _AiScreenState extends State<AiScreen> {
                         borderRadius: BorderRadius.circular(14)),
                   ),
                   onPressed: () async {
-                    await _store.setDiseaseApiKey(dAk.text);
-                    await _store.setDiseaseSecretKey(dSk.text);
+                    await _store.setPlantIdKey(dAk.text);
                     await _store.setSpeciesApiKey(sAk.text);
                     await _store.setSpeciesSecretKey(sSk.text);
                     _ai.resetToken();
@@ -547,8 +546,10 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   /// 单个密钥配置分组（标题 + 两句说明 + AK/SK 输入 + 状态）
+  /// [showSecret] = false 时只显示 API Key（如 plant.id 单一密钥）
   Widget _keySection(String title, String subtitle, TextEditingController ak,
-      TextEditingController sk, bool configured) {
+      TextEditingController sk, bool configured,
+      {bool showSecret = true}) {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
@@ -582,8 +583,10 @@ class _AiScreenState extends State<AiScreen> {
             style: const TextStyle(fontSize: 11.5, color: AppColors.sub, height: 1.4)),
         const SizedBox(height: 10),
         _input(ak, 'API Key'),
-        const SizedBox(height: 9),
-        _input(sk, 'Secret Key'),
+        if (showSecret) ...[
+          const SizedBox(height: 9),
+          _input(sk, 'Secret Key'),
+        ],
       ]),
     );
   }
