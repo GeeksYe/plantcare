@@ -158,12 +158,33 @@ class LocalStore {
   Future<void> toggleCommentLike(String id) =>
       _prefs.setBool('clike_$id', !commentLiked(id));
 
-  // ---------- AI 服务配置（百度智能云 API Key / Secret Key）----------
+  // ---------- AI 服务配置（两套独立密钥：病虫害检测 / 植物识别）----------
+  // 旧版单套密钥 ai_ak / ai_sk 作为兜底：若未单独配置某套，则沿用旧值，保证已有配置继续生效。
   String get aiApiKey => _prefs.getString('ai_ak') ?? '';
   Future<void> setAiApiKey(String v) => _prefs.setString('ai_ak', v.trim());
 
   String get aiSecretKey => _prefs.getString('ai_sk') ?? '';
   Future<void> setAiSecretKey(String v) => _prefs.setString('ai_sk', v.trim());
+
+  /// 病虫害检测 AI（百度 plant-disease）
+  String get diseaseApiKey =>
+      _prefs.getString('disease_ak') ?? aiApiKey;
+  String get diseaseSecretKey =>
+      _prefs.getString('disease_sk') ?? aiSecretKey;
+  Future<void> setDiseaseApiKey(String v) =>
+      _prefs.setString('disease_ak', v.trim());
+  Future<void> setDiseaseSecretKey(String v) =>
+      _prefs.setString('disease_sk', v.trim());
+
+  /// 植物识别 AI（百度 plant）
+  String get speciesApiKey =>
+      _prefs.getString('species_ak') ?? aiApiKey;
+  String get speciesSecretKey =>
+      _prefs.getString('species_sk') ?? aiSecretKey;
+  Future<void> setSpeciesApiKey(String v) =>
+      _prefs.setString('species_ak', v.trim());
+  Future<void> setSpeciesSecretKey(String v) =>
+      _prefs.setString('species_sk', v.trim());
 
   // ---------- AI 检测历史 ----------
   List<Map<String, dynamic>> get aiHistory {
