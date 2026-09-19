@@ -17,7 +17,7 @@ class DiseaseKb {
       ],
     },
     {
-      'keywords': ['白粉', '霉层', '白霜'],
+      'keywords': ['白粉', '白霜', '霉层'],
       'name': '白粉病',
       'level': '轻度',
       'symptom': '叶面、嫩茎覆盖一层白色粉状霉层，叶片卷曲、生长缓慢。',
@@ -95,7 +95,7 @@ class DiseaseKb {
       ],
     },
     {
-      'keywords': ['介壳', '蚧壳', '白点硬壳'],
+      'keywords': ['介壳', '蚧壳', '硬壳'],
       'name': '介壳虫',
       'level': '中度',
       'symptom': '茎叶上附着褐色或白色硬质小壳，植株长势弱，叶面发黏。',
@@ -108,7 +108,9 @@ class DiseaseKb {
       ],
     },
     {
-      'keywords': ['黄叶', '发黄', '缺铁', '叶脉绿'],
+      // 注意：关键词只保留「缺铁」相关强信号，避免「发黄/黄叶」这类泛化词
+      // 把任何黄叶都误判为缺铁性黄叶。
+      'keywords': ['缺铁', '叶脉绿', '缺铁性', '生理性黄叶'],
       'name': '缺铁性黄叶（生理性）',
       'level': '轻度',
       'symptom': '新叶先黄、叶脉仍为绿色，老叶相对正常，植株无明显病斑。',
@@ -121,7 +123,7 @@ class DiseaseKb {
       ],
     },
     {
-      'keywords': ['晒伤', '日灼', '焦边', '灼伤'],
+      'keywords': ['日灼', '晒伤', '焦边', '灼伤'],
       'name': '日灼（晒伤）',
       'level': '轻度',
       'symptom': '叶片出现干燥的白色或褐色焦斑，多朝阳光面，边界清晰。',
@@ -134,7 +136,7 @@ class DiseaseKb {
       ],
     },
     {
-      'keywords': ['徒长', '细弱', '生长缓慢', '缺光'],
+      'keywords': ['徒长', '细弱', '缺光'],
       'name': '光照不足（徒长）',
       'level': '轻度',
       'symptom': '茎节拉长、叶片间距变大、叶色变淡、向光倾斜。',
@@ -148,7 +150,54 @@ class DiseaseKb {
     },
   ];
 
-  /// 按名称/关键词匹配本地知识库
+  /// 百度 plant-disease 常见返回名 → 本地条目名（强映射，避免「黄叶」之类泛化名误判）
+  static const _aliases = <String, String>{
+    '缺铁性黄叶': '缺铁性黄叶（生理性）',
+    '缺铁黄化': '缺铁性黄叶（生理性）',
+    '生理性黄叶': '缺铁性黄叶（生理性）',
+    '叶斑病': '叶斑病',
+    '炭疽病': '炭疽病',
+    '炭疽': '炭疽病',
+    '白粉病': '白粉病',
+    '霜霉病': '霜霉病',
+    '霜霉': '霜霉病',
+    '蚜虫': '蚜虫危害',
+    '红蜘蛛': '红蜘蛛（叶螨）',
+    '叶螨': '红蜘蛛（叶螨）',
+    '介壳虫': '介壳虫',
+    '蚧壳虫': '介壳虫',
+    '根腐病': '根腐病（烂根）',
+    '烂根': '根腐病（烂根）',
+    '日灼': '日灼（晒伤）',
+    '晒伤': '日灼（晒伤）',
+    '徒长': '光照不足（徒长）',
+  };
+
+  /// 按本地条目名取条目
+  static Map<String, dynamic>? byName(String name) {
+    for (final e in entries) {
+      if (e['name'] == name) return e;
+    }
+    return null;
+  }
+
+  /// 云端病害名 → 本地条目（仅当名称明确指向某病害，避免泛化词误判）
+  static Map<String, dynamic>? matchByName(String name) {
+    if (name.isEmpty) return null;
+    final n = name.trim();
+    if (_aliases.containsKey(n)) return byName(_aliases[n]!);
+    for (final key in _aliases.keys) {
+      if (n.contains(key)) return byName(_aliases[key]!);
+    }
+    for (final e in entries) {
+      for (final k in (e['keywords'] as List<String>)) {
+        if (n.contains(k)) return e;
+      }
+    }
+    return null;
+  }
+
+  /// 症状提示 → 本地条目（用于未配置云端时的本地诊断）
   static Map<String, dynamic>? match(String text) {
     if (text.isEmpty) return null;
     for (final e in entries) {
@@ -166,5 +215,12 @@ class DiseaseKb {
     '调整浇水：见干见湿，避免盆内积水',
     '保证通风与适宜光照，增强植株抵抗力',
     '若持续恶化，建议拍摄清晰叶背特写再次识别',
+  ];
+
+  /// 植物识别无本地养护数据时的通用养护建议
+  static const speciesGeneric = [
+    '根据识别结果查询该植物的光照需求',
+    '遵循“见干见湿”浇水原则，避免盆内长期积水',
+    '生长季每月施一次薄肥，冬季停肥',
   ];
 }
