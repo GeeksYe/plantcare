@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/local_store.dart';
@@ -20,9 +21,11 @@ class _AiScreenState extends State<AiScreen> {
   final _picker = ImagePicker();
   final _ai = PlantAiService.instance;
   final _store = LocalStore.instance;
+  final _tts = FlutterTts();
   final _symptoms = <String>{};
 
   bool _scanning = false;
+  bool _ttsReady = false;
   String? _photoPath;
   AiDiagnosis? _result;
   AiTask _task = AiTask.disease;
@@ -37,6 +40,36 @@ class _AiScreenState extends State<AiScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _initTts();
+  }
+
+  Future<void> _initTts() async {
+    try {
+      await _tts.setLanguage('zh-CN');
+      await _tts.setSpeechRate(0.5);
+      await _tts.setPitch(1.0);
+      _ttsReady = true;
+    } catch (_) {}
+  }
+
+  /// 语音播报（识别完成后自动念出，也可点扬声器重读）
+  Future<void> _speak(String text) async {
+    if (text.isEmpty || !_ttsReady) return;
+    try {
+      await _tts.stop();
+      await _tts.speak(text);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _tts.stop();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
@@ -46,11 +79,17 @@ class _AiScreenState extends State<AiScreen> {
           _header(),
           const SizedBox(height: 12),
           _modeSwitch(),
+          const SizedBox(height: 10),
+          _configStatusRow(),
           const SizedBox(height: 12),
           _cameraCard(),
-          if (!_ai.configured) ...[
+          if (_task == AiTask.disease && !_ai.diseaseConfigured) ...[
             const SizedBox(height: 12),
-            _configBanner(),
+            _configBanner('病虫害检测'),
+          ],
+          if (_task == AiTask.species && !_ai.speciesConfigured) ...[
+            const SizedBox(height: 12),
+            _configBanner('植物识别'),
           ],
           if (_result != null) ...[
             const SizedBox(height: 14),
@@ -85,13 +124,26 @@ class _AiScreenState extends State<AiScreen> {
           child: Row(children: [
             Icon(Icons.settings_outlined,
                 size: 15,
-                color: _ai.configured ? AppColors.emerald : AppColors.sub),
+                color: _ai.diseaseConfigured && _ai.speciesConfigured
+                    ? AppColors.emerald
+                    : (_ai.diseaseConfigured || _ai.speciesConfigured
+                        ? AppColors.amber
+                        : AppColors.sub)),
             const SizedBox(width: 4),
-            Text(_ai.configured ? 'AI 已接入' : '接入 AI',
+            Text(
+                _ai.diseaseConfigured && _ai.speciesConfigured
+                    ? 'AI 已接入'
+                    : (_ai.diseaseConfigured || _ai.speciesConfigured
+                        ? '部分接入'
+                        : '接入 AI'),
                 style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w700,
-                    color: _ai.configured ? AppColors.emerald : AppColors.sub)),
+                    color: _ai.diseaseConfigured && _ai.speciesConfigured
+                        ? AppColors.emerald
+                        : (_ai.diseaseConfigured || _ai.speciesConfigured
+                            ? AppColors.amber
+                            : AppColors.sub))),
           ]),
         ),
       ),
@@ -110,6 +162,50 @@ class _AiScreenState extends State<AiScreen> {
         _modeItem('病虫害检测', Icons.coronavirus_outlined, AiTask.disease),
         _modeItem('植物识别', Icons.yard_outlined, AiTask.species),
       ]),
+    );
+  }
+
+  /// 两套 AI 接入状态概览（各自独立密钥）
+  Widget _configStatusRow() {
+    final items = [
+      ('病虫害检测', _ai.diseaseConfigured),
+      ('植物识别', _ai.speciesConfigured),
+    ];
+    return Row(
+      children: items
+          .map((e) => Expanded(
+                child: Container(
+                  margin: EdgeInsets.only(right: e == items.first ? 8 : 0),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                        e.$2
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked,
+                        size: 14,
+                        color: e.$2 ? AppColors.emerald : AppColors.sub),
+                    const SizedBox(width: 5),
+                    Text(e.$1,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: e.$2 ? AppColors.ink : AppColors.sub)),
+                    const Spacer(),
+                    Text(e.$2 ? '已接入' : '未接入',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: e.$2 ? AppColors.emerald : AppColors.amber)),
+                  ]),
+                ),
+              ))
+          .toList(),
     );
   }
 
@@ -213,7 +309,9 @@ class _AiScreenState extends State<AiScreen> {
                 const CircularProgressIndicator(color: Colors.white),
                 const SizedBox(height: 10),
                 Text(
-                    _ai.configured
+                    (_task == AiTask.disease
+                            ? _ai.diseaseConfigured
+                            : _ai.speciesConfigured)
                         ? '已上传，AI 正在云端分析…'
                         : 'AI 正在分析中…',
                     style: const TextStyle(
@@ -339,10 +437,11 @@ class _AiScreenState extends State<AiScreen> {
       _scanning = false;
       _result = result;
     });
+    _speak(result.speak);
   }
 
   // ---------- 配置 ----------
-  Widget _configBanner() {
+  Widget _configBanner(String taskName) {
     return GestureDetector(
       onTap: _configSheet,
       child: Container(
@@ -355,9 +454,9 @@ class _AiScreenState extends State<AiScreen> {
         child: Row(children: [
           const Icon(Icons.cloud_off_outlined, size: 18, color: AppColors.amber),
           const SizedBox(width: 8),
-          const Expanded(
-            child: Text('未配置云端 AI，当前用本地知识库诊断。点此接入真实病虫害检测',
-                style: TextStyle(fontSize: 12, color: AppColors.amber, height: 1.4)),
+          Expanded(
+            child: Text('未配置「$taskName」云端 AI，当前用本地方案。点此接入真实 $taskName 模型',
+                style: const TextStyle(fontSize: 12, color: AppColors.amber, height: 1.4)),
           ),
           const Icon(Icons.chevron_right, size: 18, color: AppColors.amber),
         ]),
@@ -366,8 +465,11 @@ class _AiScreenState extends State<AiScreen> {
   }
 
   void _configSheet() {
-    final ak = TextEditingController(text: _store.aiApiKey);
-    final sk = TextEditingController(text: _store.aiSecretKey);
+    // 两套独立密钥：病虫害检测 / 植物识别
+    final dAk = TextEditingController(text: _store.diseaseApiKey);
+    final dSk = TextEditingController(text: _store.diseaseSecretKey);
+    final sAk = TextEditingController(text: _store.speciesApiKey);
+    final sSk = TextEditingController(text: _store.speciesSecretKey);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -381,46 +483,108 @@ class _AiScreenState extends State<AiScreen> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
           ),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('接入真实 AI 检测',
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
-            const SizedBox(height: 8),
-            const Text(
-              '在百度智能云控制台创建「图像识别」应用，拿到 API Key 与 Secret Key 填入下方即可调用真实病虫害模型。',
-              style: TextStyle(fontSize: 12, color: AppColors.sub, height: 1.6)),
-            const SizedBox(height: 14),
-            _input(ak, 'API Key'),
-            const SizedBox(height: 10),
-            _input(sk, 'Secret Key'),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.forest,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                onPressed: () async {
-                  await _store.setAiApiKey(ak.text);
-                  await _store.setAiSecretKey(sk.text);
-                  _ai.resetToken();
-                  if (!mounted) return;
-                  Navigator.pop(context);
-                  setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(_ai.configured ? '已保存，将调用云端 AI' : '已清空配置，使用本地知识库'),
-                      backgroundColor: AppColors.forest));
-                },
-                child: const Text('保存配置',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('接入真实 AI（两套独立密钥）',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
+              const SizedBox(height: 8),
+              const Text(
+                '病虫害检测与植物识别使用各自独立的百度智能云密钥。若尚未分别创建应用，可在同一「图像识别」应用下为两者填相同的 Key。',
+                style: TextStyle(fontSize: 12, color: AppColors.sub, height: 1.6)),
+              const SizedBox(height: 14),
+              _keySection(
+                '病虫害检测 AI',
+                '调用 plant-disease 模型，识别叶斑、虫害、黄叶等',
+                dAk,
+                dSk,
+                _ai.diseaseConfigured,
               ),
-            ),
-          ]),
+              const SizedBox(height: 14),
+              _keySection(
+                '植物识别 AI',
+                '调用 plant 物种模型，识别植物叫什么',
+                sAk,
+                sSk,
+                _ai.speciesConfigured,
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.forest,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () async {
+                    await _store.setDiseaseApiKey(dAk.text);
+                    await _store.setDiseaseSecretKey(dSk.text);
+                    await _store.setSpeciesApiKey(sAk.text);
+                    await _store.setSpeciesSecretKey(sSk.text);
+                    _ai.resetToken();
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    setState(() {});
+                    final msg = _ai.diseaseConfigured && _ai.speciesConfigured
+                        ? '已保存，病虫害与植物识别均接入云端'
+                        : (_ai.diseaseConfigured || _ai.speciesConfigured
+                            ? '已保存，部分 AI 已接入（未填的仍用本地方案）'
+                            : '已清空配置，使用本地知识库');
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(msg), backgroundColor: AppColors.forest));
+                  },
+                  child: const Text('保存配置',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
+    );
+  }
+
+  /// 单个密钥配置分组（标题 + 两句说明 + AK/SK 输入 + 状态）
+  Widget _keySection(String title, String subtitle, TextEditingController ak,
+      TextEditingController sk, bool configured) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.softCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.ink)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: configured
+                  ? const Color(0xFFECFDF5)
+                  : const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Text(configured ? '已接入' : '未接入',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: configured ? AppColors.emerald : AppColors.amber)),
+          ),
+        ]),
+        const SizedBox(height: 3),
+        Text(subtitle,
+            style: const TextStyle(fontSize: 11.5, color: AppColors.sub, height: 1.4)),
+        const SizedBox(height: 10),
+        _input(ak, 'API Key'),
+        const SizedBox(height: 9),
+        _input(sk, 'Secret Key'),
+      ]),
     );
   }
 
@@ -463,6 +627,20 @@ class _AiScreenState extends State<AiScreen> {
           const Text('检测报告',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.ink)),
           const Spacer(),
+          if (r.speak.isNotEmpty)
+            GestureDetector(
+              onTap: () => _speak(r.speak),
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.softCard,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.volume_up_outlined,
+                    size: 16, color: AppColors.emerald),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
             decoration: BoxDecoration(
