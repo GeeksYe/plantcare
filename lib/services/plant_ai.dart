@@ -20,6 +20,7 @@ class AiDiagnosis {
   final String? baikeUrl;
   final String kind; // disease / species
   final List<Map<String, String>> alternatives; // 其他候选（name + score%）
+  final String speak; // 语音播报文案
 
   const AiDiagnosis({
     required this.name,
@@ -33,6 +34,7 @@ class AiDiagnosis {
     this.baikeUrl,
     this.kind = 'disease',
     this.alternatives = const [],
+    this.speak = '',
   });
 
   bool get isCloud => source == 'cloud';
@@ -49,8 +51,9 @@ class _Cand {
 }
 
 /// 真实 AI 病虫害检测 / 植物识别服务
-/// - 已配置百度智能云 AK/SK：调用云端图像识别（植物病害 / 植物识别）
-/// - 未配置或调用失败：自动降级到本地病害知识库给出方案
+/// - 已配置对应百度智能云 AK/SK：调用云端图像识别（植物病害 / 植物识别）
+/// - 未配置或调用失败：自动降级到本地知识库给出方案
+/// - 病虫害检测与植物识别使用**两套独立**的密钥入口
 class PlantAiService {
   PlantAiService._();
   static final PlantAiService instance = PlantAiService._();
@@ -67,30 +70,44 @@ class PlantAiService {
 
   String? _token;
   DateTime? _tokenExpire;
+  String? _tokenAk; // 记录该 token 对应的 API Key，避免两套不同密钥串号
   final _store = LocalStore.instance;
 
-  bool get configured =>
-      _store.aiApiKey.isNotEmpty && _store.aiSecretKey.isNotEmpty;
+  /// 病虫害检测是否已配置云端密钥
+  bool get diseaseConfigured =>
+      _store.diseaseApiKey.isNotEmpty && _store.diseaseSecretKey.isNotEmpty;
+
+  /// 植物识别是否已配置云端密钥
+  bool get speciesConfigured =>
+      _store.speciesApiKey.isNotEmpty && _store.speciesSecretKey.isNotEmpty;
+
+  /// 任一已配置（兼容旧逻辑）
+  bool get configured => diseaseConfigured || speciesConfigured;
 
   void resetToken() {
     _token = null;
     _tokenExpire = null;
+    _tokenAk = null;
   }
 
-  Future<String?> _accessToken() async {
+  /// 获取百度 access_token（按传入的 AK/SK，按密钥缓存避免串号）
+  Future<String?> _accessToken(String ak, String sk) async {
+    if (ak.isEmpty || sk.isEmpty) return null;
     if (_token != null &&
+        _tokenAk == ak &&
         _tokenExpire != null &&
         DateTime.now().isBefore(_tokenExpire!)) {
       return _token;
     }
     final uri = Uri.parse(
-        '$_tokenUrl?grant_type=client_credentials&client_id=${_store.aiApiKey}&client_secret=${_store.aiSecretKey}');
+        '$_tokenUrl?grant_type=client_credentials&client_id=$ak&client_secret=$sk');
     final resp = await http.post(uri).timeout(_timeout);
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (data['error'] != null || data['access_token'] == null) {
       throw Exception(data['error_description'] ?? '获取 access_token 失败');
     }
     _token = data['access_token'] as String;
+    _tokenAk = ak;
     final exp = (data['expires_in'] as num?)?.toInt() ?? 2592000;
     _tokenExpire = DateTime.now().add(Duration(seconds: exp - 300));
     return _token;
@@ -99,11 +116,19 @@ class PlantAiService {
   /// 分析图片：disease=病虫害检测，species=植物识别
   Future<AiDiagnosis> analyze(File image,
       {AiTask task = AiTask.disease, String hint = ''}) async {
-    if (!configured) {
+    final ak = task == AiTask.disease
+        ? _store.diseaseApiKey
+        : _store.speciesApiKey;
+    final sk = task == AiTask.disease
+        ? _store.diseaseSecretKey
+        : _store.speciesSecretKey;
+
+    if (ak.isEmpty || sk.isEmpty) {
       return _localResult(hint, task: task);
     }
     try {
-      final token = await _accessToken();
+      final token = await _accessToken(ak, sk);
+      if (token == null) return _localResult(hint, task: task);
       final bytes = await image.readAsBytes();
       final b64 = base64Encode(bytes);
       final body = <String, String>{'image': b64, 'baike_num': '1'};
@@ -162,6 +187,7 @@ class PlantAiService {
         ],
         source: 'cloud',
         kind: 'disease',
+        speak: '绿植健康',
         sourceNote: '如仍有异常，可拍叶背特写再次识别',
       );
     }
@@ -182,15 +208,18 @@ class PlantAiService {
     for (final c in cands) {
       final kb = DiseaseKb.matchByName(c.name);
       if (kb != null) {
+        final name = kb['name'] as String;
+        final level = kb['level'] as String;
         return AiDiagnosis(
-          name: kb['name'] as String,
+          name: name,
           score: c.score,
           summary: kb['symptom'] as String,
-          level: kb['level'] as String,
+          level: level,
           solutions:
               (kb['solutions'] as List).map((e) => '$e').toList(),
           source: 'cloud',
           kind: 'disease',
+          speak: _diseaseSpeak(name, level),
           sourceNote: '云端 AI 识别「${c.name}」· 方案来自养护知识库',
           alternatives: _alts(cands, c.name),
         );
@@ -211,6 +240,7 @@ class PlantAiService {
         solutions: DiseaseKb.genericSolutions,
         source: 'cloud',
         kind: 'disease',
+        speak: _diseaseSpeak(top.name, '中度'),
         sourceNote: desc.isNotEmpty ? '描述来自百度百科' : null,
         alternatives: _alts(cands, top.name),
       );
@@ -230,6 +260,7 @@ class PlantAiService {
       ],
       source: 'cloud',
       kind: 'disease',
+      speak: '未能准确判断绿植状态，建议重新拍摄',
       sourceNote: '低置信度结果，仅供参考',
       alternatives: _alts(cands, null),
     );
@@ -251,6 +282,7 @@ class PlantAiService {
         ],
         source: 'cloud',
         kind: 'species',
+        speak: _speciesSpeak(''),
         sourceNote: '未识别到物种',
       );
     }
@@ -294,6 +326,7 @@ class PlantAiService {
       solutions: solutions,
       source: 'cloud',
       kind: 'species',
+      speak: _speciesSpeak(top.name),
       sourceNote: care != null ? '养护要点来自本地物种库' : '描述来自百度百科',
       baikeUrl: baikeUrl,
       alternatives: _alts(cands, top.name),
@@ -322,24 +355,28 @@ class PlantAiService {
         name: '未配置 AI，无法识别物种',
         score: 0.0,
         summary:
-            '未配置百度智能云 API，植物识别需调用云端模型。请先在 AI 页右上「接入 AI」填入 API Key / Secret Key，或切换到病虫害检测使用本地知识库。',
+            '未配置植物识别的云端 API，请先在 AI 页右上「接入 AI」中填写「植物识别」专用的 API Key / Secret Key。',
         level: '物种',
-        solutions: const ['在 AI 页右上「接入 AI」填入百度智能云 API Key / Secret Key'],
+        solutions: const ['在 AI 页右上「接入 AI」填写植物识别专用密钥'],
         source: 'local',
         kind: 'species',
+        speak: '未配置植物识别，无法播报',
         sourceNote: note,
       );
     }
     final kb = DiseaseKb.match(hint);
     if (kb != null) {
+      final name = kb['name'] as String;
+      final level = kb['level'] as String;
       return AiDiagnosis(
-        name: kb['name'] as String,
+        name: name,
         score: 0.72,
         summary: kb['symptom'] as String,
-        level: kb['level'] as String,
+        level: level,
         solutions: (kb['solutions'] as List).map((e) => '$e').toList(),
         source: 'local',
         kind: 'disease',
+        speak: _diseaseSpeak(name, level),
         sourceNote: note,
       );
     }
@@ -351,7 +388,35 @@ class PlantAiService {
       solutions: DiseaseKb.genericSolutions,
       source: 'local',
       kind: 'disease',
+      speak: '绿植状态待确认',
       sourceNote: note,
     );
   }
+
+  // ---------- 语音播报文案 ----------
+  /// 病虫害：用极简状态词播报，如「绿植健康」「绿植叶黄」「绿植干枯」
+  static String _diseaseSpeak(String name, String level) {
+    if (level == '健康') return '绿植健康';
+    final n = name;
+    if (n.contains('黄') || n.contains('缺铁')) return '绿植叶黄';
+    if (n.contains('枯') || n.contains('旱') || n.contains('干')) return '绿植干枯';
+    if (n.contains('烂') || n.contains('腐') || n.contains('根')) return '绿植烂根';
+    if (n.contains('虫') ||
+        n.contains('蚜') ||
+        n.contains('螨') ||
+        n.contains('蚧') ||
+        n.contains('介') ||
+        n.contains('虱')) return '绿植生虫';
+    if (n.contains('斑') ||
+        n.contains('霉') ||
+        n.contains('粉') ||
+        n.contains('病') ||
+        n.contains('疫') ||
+        n.contains('霜')) return '绿植生病';
+    return '绿植异常';
+  }
+
+  /// 植物识别：播报「这是薄荷」
+  static String _speciesSpeak(String name) =>
+      name.isEmpty ? '未能识别该植物' : '这是$name';
 }
