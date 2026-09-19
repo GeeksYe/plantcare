@@ -166,7 +166,12 @@ class LocalStore {
   String get aiSecretKey => _prefs.getString('ai_sk') ?? '';
   Future<void> setAiSecretKey(String v) => _prefs.setString('ai_sk', v.trim());
 
-  /// 病虫害检测 AI（百度 plant-disease）
+  /// 病虫害检测 AI（plant.id health_assessment）—— 单一 API Key，无需 Secret
+  String get plantIdKey => _prefs.getString('plantid_key') ?? '';
+  Future<void> setPlantIdKey(String v) =>
+      _prefs.setString('plantid_key', v.trim());
+
+  /// 病虫害检测 AI（百度 plant-disease，旧；已被 plant.id 取代，仅作兼容保留）
   String get diseaseApiKey =>
       _prefs.getString('disease_ak') ?? aiApiKey;
   String get diseaseSecretKey =>
